@@ -269,7 +269,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             grid = torch.cat([val_img[:,0:1,:,:], val_img[:,2:3,:,:],  val_pose[:,:3,:,:], samples], -1)
             gathered_samples = [torch.zeros_like(grid) for _ in range(dist.get_world_size())]
             dist.all_gather(gathered_samples, grid) 
-            
+             
+             
 
             if is_main_process():
                 
