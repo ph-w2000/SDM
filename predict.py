@@ -17,6 +17,9 @@ from models.unet_autoenc import BeatGANsAutoencConfig
 from diffusion import create_gaussian_diffusion, make_beta_schedule, ddim_steps
 import torchvision.transforms as transforms
 import torchvision
+from hiber_dataset import HIBERDataset
+from torch.utils.data import DataLoader
+import resultVisualization
 
 class Predictor():
     def __init__(self):
@@ -25,7 +28,7 @@ class Predictor():
         conf = DiffConfig(DiffusionConfig, './config/diffusion.conf', show=False)
 
         self.model = get_model_conf().make_model()
-        ckpt = torch.load("checkpoints/last.pt")
+        ckpt = torch.load("checkpoints/pidm_deepfashion/last.pt")
         self.model.load_state_dict(ckpt["ema"])
         self.model = self.model.cuda()
         self.model.eval()
@@ -39,37 +42,70 @@ class Predictor():
                                                 (0.5, 0.5, 0.5))])
     def predict_pose(
         self,
-        image,
+        loader,
         num_poses=1,
         sample_algorithm='ddim',
         nsteps=100,
 
         ):
         """Run a single prediction on the model"""
+        for ind, (imgs, targets) in enumerate(tqdm(loader)):
+            image_hor = imgs[0].float()
+            image_ver = imgs[1].float()
+            image = torch.cat((image_hor,image_ver), 1)
+            labels = targets['masks'].float().repeat(1, 4, 1, 1)
+            bone_2d = targets['bone_2d'].long()
 
-        src = Image.open(image)
-        src = self.transforms(src).unsqueeze(0).cuda()
-        tgt_pose = torch.stack([transforms.ToTensor()(np.load(ps)).cuda() for ps in np.random.choice(self.pose_list, num_poses)], 0)
-        src = src.repeat(num_poses,1,1,1)
+            mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+            y_positions = bone_2d[:,:,:,1]
+            x_positions = bone_2d[:,:,:,0]
+            mask[:,: , y_positions, x_positions] = 1
+            mask = mask.float()
+
+            img = torch.cat([image, labels], 0)
+            target_img = torch.cat([labels , image], 0)
+            target_pose = torch.cat([mask, mask], 0)
+
+            img = img.cuda()
+            target_img = target_img.cuda()
+            target_pose = target_pose.cuda()
+
+            break
+
+        src = img
+        tgt_pose = target_pose
 
         if sample_algorithm == 'ddpm':
             samples = self.diffusion.p_sample_loop(self.model, x_cond = [src, tgt_pose], progress = True, cond_scale = 2)
         elif sample_algorithm == 'ddim':
             noise = torch.randn(src.shape).cuda()
-            seq = range(0, 1000, 1000//nsteps)
+            seq = range(0, 100, 100//nsteps)
             xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, tgt_pose])
             samples = xs[-1].cuda()
 
 
-        samples_grid = torch.cat([src[0],torch.cat([samps for samps in samples], -1)], -1)
-        samples_grid = (torch.clamp(samples_grid, -1., 1.) + 1.0)/2.0
-        pose_grid = torch.cat([torch.zeros_like(src[0]),torch.cat([samps[:3] for samps in tgt_pose], -1)], -1)
+        # samples_grid = torch.cat([src[0],torch.cat([samps for samps in samples], -1)], -1)
+        # samples_grid = (torch.clamp(samples_grid, -1., 1.) + 1.0)/2.0
+        # pose_grid = torch.cat([torch.zeros_like(src[0,:1,:,:]),torch.cat([samps[:3] for samps in tgt_pose], -1)], -1)
 
-        output = torch.cat([1-pose_grid, samples_grid], -2)
+        # output = torch.cat([1-pose_grid, samples_grid], -2)
 
-        numpy_imgs = output.unsqueeze(0).permute(0,2,3,1).detach().cpu().numpy()
-        fake_imgs = (255*numpy_imgs).astype(np.uint8)
-        Image.fromarray(fake_imgs[0]).save('output.png')
+        # numpy_imgs = output.unsqueeze(0).permute(0,2,3,1).detach().cpu().numpy()
+        # fake_imgs = (255*numpy_imgs).astype(np.uint8)
+        # Image.fromarray(fake_imgs[0]).save('output.png')
+
+        for k in range(samples.shape[0]-1):
+            hor = image_hor[k]
+            ver = image_ver[k]
+
+            samples = torch.softmax(samples[k][:1,:,:],dim=0)
+            samples = np.where(samples.data.cpu().numpy() > 0.5, 1, 0)
+
+            mask_prediction = samples
+            mask_gt = labels[k][:1,:,:]
+            
+            resultVisualization.visualization(hor,ver, mask_prediction, mask_gt)
+            exit()
 
 
     def predict_appearance(
@@ -113,18 +149,12 @@ class Predictor():
 
 if __name__ == "__main__":
 
-    # obj = Predictor()
-
-    # obj.predict_pose(image='test.jpg', num_poses=1, sample_algorithm = 'ddpm',  nsteps = 10)
-    import torch.nn.functional as F
-    # Create a tensor with shape [B, C, 20, 24]
-    tensor = torch.randn(2, 256, 20, 24)
-
-    # Pad the tensor to shape [B, C, 20, 25]
-    padded_tensor = F.pad(tensor, (0, 1, 0, 0))
-
-    # Print the shape of the padded tensor
-    print(padded_tensor.shape)
+    obj = Predictor()
+    
+    loader = HIBERDataset("../../dataset/HIBER/","val")
+    loader = DataLoader(loader, batch_size=1, shuffle=False, num_workers=1)
+    
+    obj.predict_pose(loader=loader, num_poses=2, sample_algorithm = 'ddim',  nsteps = 10)
     
     # ref_img = "data/deepfashion_256x256/target_edits/reference_img_0.png"
     # ref_mask = "data/deepfashion_256x256/target_mask/lower/reference_mask_0.png"

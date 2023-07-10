@@ -143,7 +143,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             img = img.to(device)
             target_img = target_img.to(device)
-            target_pose = target_pose.to(device)
+            target_pose = torch.zeros_like(target_pose).to(device)
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],
@@ -248,6 +248,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             val_img = image.cuda()
             val_pose = mask.cuda()
+            labels = labels.cuda()
 
             with torch.no_grad():
 
@@ -258,23 +259,37 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     print ('Sampling algorithm used: DDIM')
                     nsteps = 10
                     noise = torch.randn(val_img.shape).cuda()
-                    seq = range(0, 1000, 1000//nsteps)
+                    seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
                     samples = xs[-1].cuda()
 
-                    samples = torch.softmax(samples,dim=1)[:,:1,:,:]
-                    acc = calculate_iou( np.where(samples.data.cpu().numpy() > 0.5, 1, 0),labels[:,:1,:,:].numpy())
+                    samples = torch.softmax(torch.mean(samples, dim=1, keepdim=True),dim=1)
+
+                    acc = calculate_iou( np.where(samples.data.cpu().numpy() > 0.5, 1, 0),labels[:,:1,:,:].data.cpu().numpy())
                     print("IoU: ", acc)
-
-            grid = torch.cat([val_img[:,0:1,:,:], val_img[:,2:3,:,:],  val_pose[:,:3,:,:], samples], -1)
-            gathered_samples = [torch.zeros_like(grid) for _ in range(dist.get_world_size())]
-            dist.all_gather(gathered_samples, grid) 
-             
-             
-
+            
             if is_main_process():
-                
-                wandb.log({'samples':wandb.Image(torch.cat(gathered_samples, -2))})
+
+                heatmaps = torch.cat([val_img[:,0:1,:,:], val_img[:,2:3,:,:]], -1)
+                heatmaps_samples = [torch.zeros_like(heatmaps) for _ in range(dist.get_world_size())]
+                dist.all_gather(heatmaps_samples, heatmaps)
+
+                prediction = torch.cat([samples, labels[:,:1,:,:]], -1)
+                prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
+                dist.all_gather(prediction_samples, prediction)
+
+                # import matplotlib.pyplot as plt
+
+                # k = torch.cat(prediction_samples, -2).data.cpu().numpy()
+                # k = np.transpose(k[0], (1, 2, 0))
+                # # Plot the image
+                # plt.imshow(k)
+                # plt.axis('off')  # Optional: turn off the axis
+                # plt.show()
+                # exit()
+
+                wandb.log({'Input':wandb.Image(torch.cat(heatmaps_samples, -2))})
+                wandb.log({'Prediction_GT':wandb.Image(torch.cat(prediction_samples, -2))})
 
 
 
@@ -282,11 +297,9 @@ def main(settings, EXP_NAME):
 
     [args, DiffConf, DataConf] = settings
 
-    # if is_main_process(): 
-    #     wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
-
     if is_main_process(): 
-        wandb.init(mode="disabled")
+        # wandb.init(mode="disabled")
+        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
