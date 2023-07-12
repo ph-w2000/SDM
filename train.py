@@ -115,7 +115,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
 
  
-    for epoch in range(300):
+    for epoch in range(1000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -179,7 +179,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
                             'loss_mean':(sum(loss_mean_list)/len(loss_mean_list)), 
-                            'epoch':epoch,'steps':i})
+                            'epoch':epoch,
+                            'steps':i})
                 loss_list = []
                 loss_mean_list = []
                 loss_vb_list = []
@@ -263,9 +264,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
                     samples = xs[-1].cuda()
 
-                    samples = torch.softmax(torch.mean(samples, dim=1, keepdim=True),dim=1)
-
-                    acc = calculate_iou( np.where(samples.data.cpu().numpy() > 0.5, 1, 0),labels[:,:1,:,:].data.cpu().numpy())
+                    acc = calculate_iou( samples.data.cpu().numpy()[:,:1,:,:],labels[:,:1,:,:].data.cpu().numpy())
                     print("IoU: ", acc)
             
             if is_main_process():
@@ -274,7 +273,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 heatmaps_samples = [torch.zeros_like(heatmaps) for _ in range(dist.get_world_size())]
                 dist.all_gather(heatmaps_samples, heatmaps)
 
-                prediction = torch.cat([samples, labels[:,:1,:,:]], -1)
+                prediction = torch.cat([samples[:,:1,:,:], labels[:,:1,:,:]], -1)
                 prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
                 dist.all_gather(prediction_samples, prediction)
 
