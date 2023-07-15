@@ -128,7 +128,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_hor = imgs[0].float()
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
-            labels = targets['masks'].float().repeat(1, 4, 1, 1)
+            mask_GT = targets['masks'].float()
             bone_2d = targets['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
@@ -137,13 +137,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             mask[:,: , y_positions, x_positions] = 1
             mask = mask.float()
 
-            img = torch.cat([image, labels], 0)
-            target_img = torch.cat([labels , image], 0)
+            img = torch.cat([image, image], 0)
+            target_img = torch.cat([mask_GT , mask_GT], 0)
             target_pose = torch.cat([mask, mask], 0)
 
             img = img.to(device)
             target_img = target_img.to(device)
-            target_pose = torch.zeros_like(target_pose).to(device)
+            target_pose = target_pose.to(device)
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],
@@ -237,7 +237,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_hor = val_batch[0][0].float()
             image_ver = val_batch[0][1].float()
             image = torch.cat((image_hor,image_ver), 1)
-            labels = val_batch[1]['masks'].float().repeat(1, 4, 1, 1)
+            mask_GT = val_batch[1]['masks'].float()
             bone_2d = val_batch[1]['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
@@ -248,7 +248,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             val_img = image.cuda()
             val_pose = mask.cuda()
-            labels = labels.cuda()
+            mask_GT = mask_GT.cuda()
 
             with torch.no_grad():
 
@@ -258,14 +258,12 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 elif args.sample_algorithm == 'ddim':
                     print ('Sampling algorithm used: DDIM')
                     nsteps = 10
-                    noise = torch.randn(val_img.shape).cuda()
+                    noise = torch.randn(mask_GT.shape).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
                     samples = xs[-1].cuda()
 
-                    samples = torch.softmax(torch.mean(samples, dim=1, keepdim=True),dim=1)
-
-                    acc = calculate_iou( np.where(samples.data.cpu().numpy() > 0.5, 1, 0),labels[:,:1,:,:].data.cpu().numpy())
+                    acc = calculate_iou( samples.data.cpu().numpy(),mask_GT.data.cpu().numpy())
                     print("IoU: ", acc)
             
             if is_main_process():
@@ -274,9 +272,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 heatmaps_samples = [torch.zeros_like(heatmaps) for _ in range(dist.get_world_size())]
                 dist.all_gather(heatmaps_samples, heatmaps)
 
-                prediction = torch.cat([samples, labels[:,:1,:,:]], -1)
+                prediction = torch.cat([samples], -1)
                 prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
                 dist.all_gather(prediction_samples, prediction)
+
+                MaGT = torch.cat([mask_GT], -1)
+                MaGT_samples = [torch.zeros_like(MaGT) for _ in range(dist.get_world_size())]
+                dist.all_gather(MaGT_samples, MaGT)
 
                 # import matplotlib.pyplot as plt
 
@@ -289,7 +291,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 # exit()
 
                 wandb.log({'Input':wandb.Image(torch.cat(heatmaps_samples, -2))})
-                wandb.log({'Prediction_GT':wandb.Image(torch.cat(prediction_samples, -2))})
+                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2))})
+                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2))})
 
 
 
