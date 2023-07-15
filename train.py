@@ -115,7 +115,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
 
  
-    for epoch in range(300):
+    for epoch in range(1000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -179,7 +179,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
                             'loss_mean':(sum(loss_mean_list)/len(loss_mean_list)), 
-                            'epoch':epoch,'steps':i})
+                            'epoch':epoch,
+                            'steps':i})
                 loss_list = []
                 loss_mean_list = []
                 loss_vb_list = []
