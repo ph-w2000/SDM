@@ -34,13 +34,18 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     support it as an extra input.
     """
     def forward(self, x, emb=None, cond=None, lateral=None):
+        i = 0
         for layer in self:
             if isinstance(layer, TimestepBlock):
-                x = layer(x, emb=emb, cond=None, lateral=lateral)
+                if len(self)==2 and i>=1:
+                    x = layer(x, emb=emb, cond=None, lateral=lateral)
+                else:
+                    x = layer(x, emb=emb, cond=None, lateral=lateral)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, cond)
             else:
                 x = layer(x)
+            i+=1
         return x
 
 
@@ -222,7 +227,6 @@ class ResBlock(TimestepBlock):
             h = in_conv(h)
         else:
             h = self.in_layers(x)
-
         if self.conf.use_condition:
             # it's possible that the network may not receieve the time emb
             # this happens with autoenc and setting the time_at
@@ -239,7 +243,8 @@ class ResBlock(TimestepBlock):
                 if cond is None:
                     cond_out = None
                 else:
-                    cond_out = self.cond_emb_layers(cond).type(h.dtype)
+                    # cond_out = self.cond_emb_layers(cond).type(h.dtype)
+                    cond_out = cond.type(h.dtype)
 
                 if cond_out is not None:
                     while len(cond_out.shape) < len(h.shape):
@@ -278,7 +283,6 @@ def apply_conditions(
         cond: encoder's conditional (read to scale + shift)
     """
     two_cond = emb is not None and cond is not None
-
     if emb is not None:
         # adjusting shapes
         while len(emb.shape) < len(h.shape):

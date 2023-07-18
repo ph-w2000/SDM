@@ -151,7 +151,7 @@ if __name__ == "__main__":
 
     obj = Predictor()
     
-    loader = HIBERDataset("../../dataset/HIBER/","val")
+    loader = HIBERDataset("../../dataset/HIBER/","train")
     loader = DataLoader(loader, batch_size=1, shuffle=False, num_workers=1)
     
     obj.predict_pose(loader=loader, num_poses=2, sample_algorithm = 'ddim',  nsteps = 10)

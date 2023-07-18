@@ -115,7 +115,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
 
  
-    for epoch in range(1000):
+    for epoch in range(500):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -132,10 +132,12 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             bone_2d = targets['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
-            y_positions = bone_2d[:,:,:,1]
-            x_positions = bone_2d[:,:,:,0]
-            mask[:,: , y_positions, x_positions] = 1
-            mask = mask.float()
+            B, N, K, _ = bone_2d.shape
+            b_indices = torch.arange(B).view(B, 1, 1, 1)
+            n_indices = torch.arange(N).view(1, N, 1, 1)
+            x_positions = bone_2d[:, :, :, 0:1].long()
+            y_positions = bone_2d[:, :, :, 1:].long()
+            mask[b_indices, n_indices, y_positions, x_positions] = 1
 
             img = torch.cat([image, image], 0)
             target_img = torch.cat([mask_GT , mask_GT], 0)
@@ -258,7 +260,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
                 elif args.sample_algorithm == 'ddim':
                     print ('Sampling algorithm used: DDIM')
-                    nsteps = 10
+                    nsteps = 50
                     noise = torch.randn(mask_GT.shape).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
@@ -269,9 +271,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             
             if is_main_process():
 
-                heatmaps = torch.cat([val_img[:,0:1,:,:], val_img[:,2:3,:,:]], -1)
-                heatmaps_samples = [torch.zeros_like(heatmaps) for _ in range(dist.get_world_size())]
-                dist.all_gather(heatmaps_samples, heatmaps)
+                heatmaps_hor = torch.cat([val_img[:,0:1,:,:]], -1)
+                heatmaps_samples_hor = [torch.zeros_like(heatmaps_hor) for _ in range(dist.get_world_size())]
+                dist.all_gather(heatmaps_samples_hor, heatmaps_hor)
+
+                heatmaps_ver = torch.cat([val_img[:,2:3,:,:]], -1)
+                heatmaps_samples_ver = [torch.zeros_like(heatmaps_ver) for _ in range(dist.get_world_size())]
+                dist.all_gather(heatmaps_samples_ver, heatmaps_ver)
 
                 prediction = torch.cat([samples], -1)
                 prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
@@ -291,7 +297,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 # plt.show()
                 # exit()
 
-                wandb.log({'Input':wandb.Image(torch.cat(heatmaps_samples, -2))})
+                wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
+                wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
                 wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2))})
                 wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2))})
 

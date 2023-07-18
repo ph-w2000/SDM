@@ -147,8 +147,8 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
         """
         cond_mask = prob_mask_like((x.shape[0],), prob = prob, device = x.device)
 
-        if t_cond is None:
-            t_cond = t
+        # if t_cond is None:
+        #     t_cond = t
 
         if noise is not None:
             # if the noise is given, we predict the cond from noise
@@ -158,10 +158,8 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
             x_cond  = (cond_mask.view(-1,1,1,1)*x_cond)
             if x is not None:
                 assert len(x) == len(x_cond), f'{len(x)} != {len(x_cond)}'
-
             tmp = self.encode(x_cond)
             cond = tmp['cond']
-
         else:
             if prob==1:
                 cond = cond[0]
@@ -171,17 +169,17 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
 
         if t is not None:
             _t_emb = timestep_embedding(t, self.conf.model_channels)
-            _t_cond_emb = timestep_embedding(t_cond, self.conf.model_channels)
+            # _t_cond_emb = timestep_embedding(t_cond, self.conf.model_channels)
         else:
             # this happens when training only autoenc
             _t_emb = None
-            _t_cond_emb = None
+            # _t_cond_emb = None
 
         if self.conf.resnet_two_cond:
             res = self.time_embed.forward(
                 time_emb=_t_emb,
                 cond=cond,
-                time_cond_emb=_t_cond_emb,
+                # time_cond_emb=_t_cond_emb,
             )
         else:
             raise NotImplementedError()
@@ -236,7 +234,6 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
 
                     k += 1
 
-
             assert k == len(self.input_blocks)
             # middle blocks
             h = self.middle_block(h, emb=mid_time_emb, cond=mid_cond_emb)
@@ -260,12 +257,17 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                     # print(i, j, lateral)
                 if h.shape == (h.shape[0], 512, 20, 24) :
                     h = F.pad(h, (0, 1, 0, 0))
-                h = self.output_blocks[k](h,
-                                          emb=dec_time_emb,
-                                          cond=dec_cond_emb[-k-1],
-                                          lateral=lateral)
 
-                
+                if k == 0:
+                    h = self.output_blocks[k](h,
+                                          emb=dec_time_emb,
+                                          cond=None,
+                                          lateral=lateral)
+                else:
+                    h = self.output_blocks[k](h,
+                                          emb=dec_time_emb,
+                                          cond=dec_cond_emb[-k],
+                                          lateral=lateral)
                 k += 1
         pred = self.out(h)
         return pred

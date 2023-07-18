@@ -308,7 +308,6 @@ class BeatGANsUNetModel(nn.Module):
         assert (y is not None) == (
             self.conf.num_classes is not None
         ), "must specify y if and only if the model is class-conditional"
-
         # hs = []
         hs = [[] for _ in range(len(self.conf.channel_mult))]
         emb = self.time_embed(timestep_embedding(t, self.time_emb_channels))
@@ -697,14 +696,9 @@ class BeatGANsEncoder(nn.Module):
         results = []
         for i in range(len(self.input_num_blocks)):
             for j in range(self.input_num_blocks[i]):
-                # print(h.shape)
-                # print(self.input_blocks[k])
-                # exit()
                 h = self.input_blocks[k](h, emb=None)
-                # print(i, j, h.shape)
                 hs[i].append(h)
                 results.append(h)
-                #print (h.shape)
                 k += 1
         assert k == len(self.input_blocks)
 

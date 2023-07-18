@@ -201,7 +201,6 @@ class GaussianDiffusion:
         self.betas = betas
         assert len(betas.shape) == 1, "betas must be 1-D"
         assert (betas > 0).all() and (betas <= 1).all()
-
         self.num_timesteps = int(betas.shape[0])
 
         alphas = 1.0 - betas
@@ -1004,8 +1003,6 @@ class GaussianDiffusion:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
             model_output = model(x = torch.cat([x_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
-            
-
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
@@ -1035,6 +1032,8 @@ class GaussianDiffusion:
                 ModelMeanType.START_X: x_start,
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
+            # target = noise 
+            # with shape [8, 1, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
 
