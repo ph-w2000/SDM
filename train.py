@@ -18,6 +18,23 @@ import numpy as np
 import data as deepfashion_data
 from model import UNet
 
+def replace_zeros_and_ones_with_random_values(tensor):
+    # Get the shape of the input tensor
+    shape = tensor.size()
+
+    # Generate random values for 0s from the range [-1, 0]
+    random_zeros = -torch.rand(shape)  # Generates random values in the range [-1, 0)
+
+    # Generate random values for 1s from the range (0, 1]
+    random_ones = torch.rand(shape)  # Generates random values in the range [0, 1)
+    epsilon=1e-7
+    random_ones = random_ones.masked_fill(random_ones == 0, epsilon)
+
+    # Use torch.where to replace 0s with random_zeros and 1s with random_ones
+    result = torch.where(tensor == 0, random_zeros, random_ones)
+
+    return result
+
 def init_distributed():
 
     # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
@@ -93,15 +110,15 @@ def calculate_iou(array1, array2):
     for s in range(size):
         a1 = array1[s]
         a2 = array2[s]
-        intersection = np.logical_and(a1, a2)
-        union = np.logical_or(a1, a2)
-        if np.sum(union) != 0:
-            iou = np.sum(intersection) / np.sum(union)
+        intersection = torch.logical_and(a1, a2)
+        union = torch.logical_or(a1, a2)
+        if torch.sum(union) != 0:
+            iou = torch.sum(intersection) / torch.sum(union)
         else:
             iou = 0
         ious.append(iou)
 
-    return np.mean(iou)
+    return torch.mean(iou)
 
 
 def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb):
@@ -115,7 +132,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
 
  
-    for epoch in range(500):
+    for epoch in range(1000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -129,6 +146,21 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
+            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
+
+            # import matplotlib.pyplot as plt
+            # k = mask_GT.data.cpu().numpy()
+            # k = np.transpose(k[0], (1, 2, 0))
+            # # Plot the image
+            # plt.imshow(k)
+            # plt.axis('off')  # Optional: turn off the axis
+            # plt.show()
+
+            # k = np.where(k<=0, 0, 1)
+            # plt.imshow(k)
+            # plt.show()
+            # exit()
+
             bone_2d = targets['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
@@ -241,6 +273,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = val_batch[0][1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = val_batch[1]['masks'].float()
+            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
             bone_2d = val_batch[1]['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
@@ -266,7 +299,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
                     samples = xs[-1].cuda()
 
-                    acc = calculate_iou( samples.data.cpu().numpy(),mask_GT.data.cpu().numpy())
+                    scaled_samples = torch.where(samples<=0, 0, 1).float()
+                    scaled_GT = torch.where(mask_GT<=0, 0, 1).float()
+                    acc = calculate_iou( scaled_samples,scaled_GT)
                     print("IoU: ", acc)
             
             if is_main_process():
@@ -279,21 +314,25 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 heatmaps_samples_ver = [torch.zeros_like(heatmaps_ver) for _ in range(dist.get_world_size())]
                 dist.all_gather(heatmaps_samples_ver, heatmaps_ver)
 
-                prediction = torch.cat([samples], -1)
+                prediction = torch.cat([scaled_samples], -1)
                 prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
                 dist.all_gather(prediction_samples, prediction)
 
-                MaGT = torch.cat([mask_GT], -1)
+                MaGT = torch.cat([scaled_GT], -1)
                 MaGT_samples = [torch.zeros_like(MaGT) for _ in range(dist.get_world_size())]
                 dist.all_gather(MaGT_samples, MaGT)
 
                 # import matplotlib.pyplot as plt
-
-                # k = torch.cat(prediction_samples, -2).data.cpu().numpy()
+                # k = scaled_samples.data.cpu().numpy()
                 # k = np.transpose(k[0], (1, 2, 0))
                 # # Plot the image
                 # plt.imshow(k)
                 # plt.axis('off')  # Optional: turn off the axis
+                # plt.show()
+
+                # k = scaled_GT.data.cpu().numpy()
+                # k = np.transpose(k[0], (1, 2, 0))
+                # plt.imshow(k)
                 # plt.show()
                 # exit()
 
