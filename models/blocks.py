@@ -40,7 +40,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
                 if len(self)==2 and i>=1:
                     x = layer(x, emb=emb, cond=None, lateral=lateral)
                 else:
-                    x = layer(x, emb=emb, cond=None, lateral=lateral)
+                    x = layer(x, emb=emb, cond=cond, lateral=lateral)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, cond)
             else:

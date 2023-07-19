@@ -258,7 +258,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 if h.shape == (h.shape[0], 512, 20, 24) :
                     h = F.pad(h, (0, 1, 0, 0))
 
-                if k == 0:
+                if k == 5 or k==11:
                     h = self.output_blocks[k](h,
                                           emb=dec_time_emb,
                                           cond=None,
