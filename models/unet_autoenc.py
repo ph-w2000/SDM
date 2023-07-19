@@ -242,7 +242,6 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
             # happens when training only the autonecoder
             h = None
             hs = [[] for _ in range(len(self.conf.channel_mult))]
-
         # output blocks
         k = 0
         for i in range(len(self.output_num_blocks)):
@@ -266,7 +265,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 else:
                     h = self.output_blocks[k](h,
                                           emb=dec_time_emb,
-                                          cond=dec_cond_emb[-k],
+                                          cond=dec_cond_emb[-k-1],
                                           lateral=lateral)
                 k += 1
         pred = self.out(h)
