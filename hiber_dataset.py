@@ -21,7 +21,7 @@ class HIBERDataset(Dataset):
 
     def __len__(self):
         # return len(self.ds)
-        return 4
+        return 8
     
     def __init__(self, data_dir, split):
         self.data_dir = data_dir
@@ -38,11 +38,21 @@ class HIBERDataset(Dataset):
         if idx == 0:
             return self.get_image(0), self.get_target(0)
         elif idx == 1:
-            return self.get_image(140), self.get_target(140)
+            return self.get_image(70), self.get_target(70)
         elif idx == 2:
+            return self.get_image(140), self.get_target(140)
+        elif idx == 3:
+            return self.get_image(210), self.get_target(210)
+        elif idx == 4:
             return self.get_image(280), self.get_target(280)
-        else:
+        elif idx == 5:
+            return self.get_image(350), self.get_target(350)
+        elif idx == 6:
             return self.get_image(420), self.get_target(420)
+        elif idx == 7:
+            return self.get_image(490), self.get_target(490)
+        else:
+            return self.get_image(560), self.get_target(560)
 
         return self.get_image(idx), self.get_target(idx)
     

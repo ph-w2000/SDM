@@ -62,7 +62,7 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
         
             [cond, target_pose] = x_cond[:2]
             et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
-            et, model_var_values = torch.split(et, 1, dim=1)
+            et, model_var_values = torch.split(et, 16, dim=1)
             x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
             c1 = (
@@ -233,6 +233,14 @@ class GaussianDiffusion:
             * np.sqrt(alphas)
             / (1.0 - self.alphas_cumprod)
         )
+
+        self.mask_emb = nn.Embedding(2, 16).cuda()
+
+    def mask_encoder(self, mask):
+        x_start_enc = self.mask_emb(mask.long()).squeeze(1).permute(0, 3, 1, 2)
+        x_start_enc = (torch.sigmoid(x_start_enc) * 2 - 1) * 0.01
+
+        return x_start_enc
 
     def q_mean_variance(self, x_start, t):
         """
@@ -979,10 +987,13 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
+        x_start = self.mask_encoder(x_start)
+        
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
+
         x_t = self.q_sample(x_start, t, noise=noise)
         [img, target_pose] = cond_input
 
@@ -1033,7 +1044,7 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             # target = noise 
-            # with shape [8, 1, 160, 200]
+            # with shape [8, 16, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
 

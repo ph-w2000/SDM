@@ -146,7 +146,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
 
             # import matplotlib.pyplot as plt
             # k = mask_GT.data.cpu().numpy()
@@ -171,9 +170,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             y_positions = bone_2d[:, :, :, 1:].long()
             mask[b_indices, n_indices, y_positions, x_positions] = 1
 
-            img = torch.cat([image, image], 0)
-            target_img = torch.cat([mask_GT , mask_GT], 0)
-            target_pose = torch.cat([mask, mask], 0)
+            img = image
+            target_img = mask_GT
+            target_pose = mask
 
             img = img.to(device)
             target_img = target_img.to(device)
@@ -273,7 +272,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = val_batch[0][1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = val_batch[1]['masks'].float()
-            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
             bone_2d = val_batch[1]['bone_2d'].long()
             filenames = val_batch[1]["image_id"]
 
@@ -295,13 +293,18 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 elif args.sample_algorithm == 'ddim':
                     print ('Sampling algorithm used: DDIM')
                     nsteps = 50
-                    noise = torch.randn(mask_GT.shape).cuda()
+                    noise = torch.randn([image_hor.shape[0], 16, 160, 200]).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                     xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
                     samples = xs[-1].cuda()
 
-                    scaled_samples = torch.where(samples<=0, 0, 1).float()
-                    scaled_GT = torch.where(mask_GT<=0, 0, 1).float()
+                    distance_to_B0 = torch.sum((samples.permute(0,2,3,1) - diffusion.mask_emb.weight[0]) ** 2, dim=3)
+                    distance_to_B1 = torch.sum((samples.permute(0,2,3,1) - diffusion.mask_emb.weight[1]) ** 2, dim=3)
+                    binary_tensor = distance_to_B0 < distance_to_B1
+                    binary_tensor = binary_tensor.float()
+
+                    scaled_samples = binary_tensor.unsqueeze(1).float()
+                    scaled_GT = mask_GT.float()
                     acc = calculate_iou( scaled_samples,scaled_GT)
                     print("IoU: ", acc)
             
@@ -339,9 +342,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
                 wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
-                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2),caption=filenames)})
-                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2),caption=filenames)})
-
+                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2))})
+                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2))})
 
 
 def main(settings, EXP_NAME):
@@ -358,7 +360,7 @@ def main(settings, EXP_NAME):
     DiffConf.distributed = True
     local_rank = int(os.environ['LOCAL_RANK'])
     
-    DataConf.data.train.batch_size = args.batch_size//2  #src -> tgt , tgt -> src
+    DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
     val_dataset, train_dataset = deepfashion_data.get_train_val_dataloader(DataConf.data, labels_required = True, distributed = True)
