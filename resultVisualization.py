@@ -13,7 +13,7 @@ def visualize_attention(attention_map):
     plt.show()
 
 
-def visualization(hor, ver, mask_prediction, mask_gt):
+def visualization(hor, ver, mask_prediction, mask_gt, filename, iou):
     array1 = mask_prediction
     array2 = mask_gt
     array3 = hor[:1,:,:]
@@ -50,13 +50,13 @@ def visualization(hor, ver, mask_prediction, mask_gt):
 
     # Adjust spacing between subplots
     plt.subplots_adjust(wspace=0.1)
-    plt.title("IoU: "+str(np.round(1,3)))
+    plt.title("IoU: "+str(np.round(iou,3)))
 
     # Save the figure
-    # address = './visualization/'+str(filename.item())+".png"
-    # plt.savefig(address)
+    address = './visualization/'+str(filename.item())+".png"
+    plt.savefig(address)
 
     # Show the figure
-    plt.show()
+    # plt.show()
 
     plt.close()

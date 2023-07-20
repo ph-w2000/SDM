@@ -35,6 +35,15 @@ class HIBERDataset(Dataset):
 
     def __getitem__(self, idx):
         idx = idx%4
+        if idx == 0:
+            return self.get_image(0), self.get_target(0)
+        elif idx == 1:
+            return self.get_image(140), self.get_target(140)
+        elif idx == 2:
+            return self.get_image(280), self.get_target(280)
+        else:
+            return self.get_image(420), self.get_target(420)
+
         return self.get_image(idx), self.get_target(idx)
     
     def get_image(self, img_id):

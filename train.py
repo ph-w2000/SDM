@@ -275,6 +275,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             mask_GT = val_batch[1]['masks'].float()
             mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
             bone_2d = val_batch[1]['bone_2d'].long()
+            filenames = val_batch[1]["image_id"]
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
             y_positions = bone_2d[:,:,:,1]
@@ -338,8 +339,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
                 wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
-                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2))})
-                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2))})
+                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2),caption=filenames)})
+                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2),caption=filenames)})
 
 
 

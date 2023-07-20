@@ -21,6 +21,41 @@ from hiber_dataset import HIBERDataset
 from torch.utils.data import DataLoader
 import resultVisualization
 
+def replace_zeros_and_ones_with_random_values(tensor):
+    # Get the shape of the input tensor
+    shape = tensor.size()
+
+    # Generate random values for 0s from the range [-1, 0]
+    random_zeros = -torch.rand(shape)  # Generates random values in the range [-1, 0)
+
+    # Generate random values for 1s from the range (0, 1]
+    random_ones = torch.rand(shape)  # Generates random values in the range [0, 1)
+    epsilon=1e-7
+    random_ones = random_ones.masked_fill(random_ones == 0, epsilon)
+
+    # Use torch.where to replace 0s with random_zeros and 1s with random_ones
+    result = torch.where(tensor == 0, random_zeros, random_ones)
+
+    return result
+
+def calculate_iou(array1, array2):
+
+    size = array1.shape[0]
+    ious = []
+
+    for s in range(size):
+        a1 = array1[s]
+        a2 = array2[s]
+        intersection = torch.logical_and(a1, a2)
+        union = torch.logical_or(a1, a2)
+        if torch.sum(union) != 0:
+            iou = torch.sum(intersection) / torch.sum(union)
+        else:
+            iou = 0
+        ious.append(iou)
+
+    return torch.mean(iou)
+
 class Predictor():
     def __init__(self):
         """Load the model into memory to make running multiple predictions efficient"""
@@ -49,12 +84,17 @@ class Predictor():
 
         ):
         """Run a single prediction on the model"""
+        total_iou = 0
+        i = 0
+
         for ind, (imgs, targets) in enumerate(tqdm(loader)):
             image_hor = imgs[0].float()
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
-            labels = targets['masks'].float().repeat(1, 4, 1, 1)
+            mask_GT = targets['masks'].float()
+            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
             bone_2d = targets['bone_2d'].long()
+            filenames = targets["image_id"]
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
             y_positions = bone_2d[:,:,:,1]
@@ -62,102 +102,53 @@ class Predictor():
             mask[:,: , y_positions, x_positions] = 1
             mask = mask.float()
 
-            img = torch.cat([image, labels], 0)
-            target_img = torch.cat([labels , image], 0)
-            target_pose = torch.cat([mask, mask], 0)
-
-            img = img.cuda()
-            target_img = target_img.cuda()
-            target_pose = target_pose.cuda()
-
-            break
-
-        src = img
-        tgt_pose = target_pose
-
-        if sample_algorithm == 'ddpm':
-            samples = self.diffusion.p_sample_loop(self.model, x_cond = [src, tgt_pose], progress = True, cond_scale = 2)
-        elif sample_algorithm == 'ddim':
-            noise = torch.randn(src.shape).cuda()
-            seq = range(0, 100, 100//nsteps)
-            xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, tgt_pose])
-            samples = xs[-1].cuda()
+            val_img = image.cuda()
+            val_pose = mask.cuda()
+            mask_GT = mask_GT
 
 
-        # samples_grid = torch.cat([src[0],torch.cat([samps for samps in samples], -1)], -1)
-        # samples_grid = (torch.clamp(samples_grid, -1., 1.) + 1.0)/2.0
-        # pose_grid = torch.cat([torch.zeros_like(src[0,:1,:,:]),torch.cat([samps[:3] for samps in tgt_pose], -1)], -1)
+            src = val_img
+            tgt_pose = val_pose
 
-        # output = torch.cat([1-pose_grid, samples_grid], -2)
-
-        # numpy_imgs = output.unsqueeze(0).permute(0,2,3,1).detach().cpu().numpy()
-        # fake_imgs = (255*numpy_imgs).astype(np.uint8)
-        # Image.fromarray(fake_imgs[0]).save('output.png')
-
-        for k in range(samples.shape[0]-1):
-            hor = image_hor[k]
-            ver = image_ver[k]
-
-            samples = torch.softmax(samples[k][:1,:,:],dim=0)
-            samples = np.where(samples.data.cpu().numpy() > 0.5, 1, 0)
-
-            mask_prediction = samples
-            mask_gt = labels[k][:1,:,:]
-            
-            resultVisualization.visualization(hor,ver, mask_prediction, mask_gt)
-            exit()
+            if sample_algorithm == 'ddpm':
+                samples = self.diffusion.p_sample_loop(self.model, x_cond = [src, tgt_pose], progress = True, cond_scale = 2)
+            elif sample_algorithm == 'ddim':
+                noise = torch.randn(mask_GT.shape).cuda()
+                seq = range(0, 1000, 1000//nsteps)
+                xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, tgt_pose])
+                samples = xs[-1].cuda()
 
 
-    def predict_appearance(
-        self,
-        image,
-        ref_img,
-        ref_mask,
-        ref_pose,
-        sample_algorithm='ddim',
-        nsteps=100,
+            hor = image_hor[0].data.cpu().numpy()
+            ver = image_ver[0].data.cpu().numpy()
 
-        ):
-        """Run a single prediction on the model"""
+            scaled_samples = torch.where(samples<=0, 0, 1).float()
+            scaled_GT = torch.where(mask_GT<=0, 0, 1).float()
+            iou = calculate_iou( scaled_samples.data.cpu(),scaled_GT)
 
-        src = Image.open(image)
-        src = self.transforms(src).unsqueeze(0).cuda()
-        
-        ref = Image.open(ref_img)
-        ref = self.transforms(ref).unsqueeze(0).cuda()
+            total_iou+=iou
+            i+=1
 
-        mask = transforms.ToTensor()(Image.open(ref_mask)).unsqueeze(0).cuda()
-        pose =  transforms.ToTensor()(np.load(ref_pose)).unsqueeze(0).cuda()
+            resultVisualization.visualization(hor,ver, scaled_samples[0].data.cpu().numpy(), scaled_GT[0].numpy(), filenames[0], iou)
+            # exit()
+        print("IoU ", total_iou/i)
 
-
-        if sample_algorithm == 'ddpm':
-            samples = self.diffusion.p_sample_loop(self.model, x_cond = [src, pose, ref, mask], progress = True, cond_scale = 2)
-        elif sample_algorithm == 'ddim':
-            noise = torch.randn(src.shape).cuda()
-            seq = range(0, 1000, 1000//nsteps)
-            xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, pose, ref, mask], diffusion=self.diffusion)
-            samples = xs[-1].cuda()
-
-
-        samples = torch.clamp(samples, -1., 1.)
-
-        output = (torch.cat([src, ref, mask*2-1, samples], -1) + 1.0)/2.0
-
-        numpy_imgs = output.permute(0,2,3,1).detach().cpu().numpy()
-        fake_imgs = (255*numpy_imgs).astype(np.uint8)
-        Image.fromarray(fake_imgs[0]).save('output.png')
 
 if __name__ == "__main__":
 
     obj = Predictor()
     
-    loader = HIBERDataset("../../dataset/HIBER/","train")
-    loader = DataLoader(loader, batch_size=1, shuffle=False, num_workers=1)
+    loader = HIBERDataset("../../dataset/HIBER/","val")
+    loader = DataLoader(loader, batch_size=8, shuffle=False, num_workers=4)
     
-    obj.predict_pose(loader=loader, num_poses=2, sample_algorithm = 'ddim',  nsteps = 10)
+    obj.predict_pose(loader=loader, num_poses=2, sample_algorithm = 'ddim',  nsteps = 50)
     
-    # ref_img = "data/deepfashion_256x256/target_edits/reference_img_0.png"
-    # ref_mask = "data/deepfashion_256x256/target_mask/lower/reference_mask_0.png"
-    # ref_pose = "data/deepfashion_256x256/target_pose/reference_pose_0.npy"
+    # a = torch.randint(0, 1, (2,1,160,200), dtype=torch.int64)
+    # b = nn.Embedding(2, 512)
+    # gt_down = b(a)
+    # print(gt_down.shape)
+    # gt_down = gt_down.squeeze(1).permute(0, 3, 1, 2)
+    # gt_down = (torch.sigmoid(gt_down) * 2 - 1) * 1
 
-    # #obj.predict_appearance(image='test.jpg', ref_img = ref_img, ref_mask = ref_mask, ref_pose = ref_pose, sample_algorithm = 'ddim',  nsteps = 50)
+    # print(gt_down.shape)
+    
