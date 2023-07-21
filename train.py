@@ -132,7 +132,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
 
  
-    for epoch in range(1000):
+    for epoch in range(300):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -163,12 +163,12 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             bone_2d = targets['bone_2d'].long()
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
-            B, N, K, _ = bone_2d.shape
-            b_indices = torch.arange(B).view(B, 1, 1, 1)
-            n_indices = torch.arange(N).view(1, N, 1, 1)
-            x_positions = bone_2d[:, :, :, 0:1].long()
-            y_positions = bone_2d[:, :, :, 1:].long()
-            mask[b_indices, n_indices, y_positions, x_positions] = 1
+            # B, N, K, _ = bone_2d.shape
+            # b_indices = torch.arange(B).view(B, 1, 1, 1)
+            # n_indices = torch.arange(N).view(1, N, 1, 1)
+            # x_positions = bone_2d[:, :, :, 0:1].long()
+            # y_positions = bone_2d[:, :, :, 1:].long()
+            # mask[b_indices, n_indices, y_positions, x_positions] = 1
 
             img = image
             target_img = mask_GT
@@ -276,10 +276,10 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             filenames = val_batch[1]["image_id"]
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
-            y_positions = bone_2d[:,:,:,1]
-            x_positions = bone_2d[:,:,:,0]
-            mask[:,: , y_positions, x_positions] = 1
-            mask = mask.float()
+            # y_positions = bone_2d[:,:,:,1]
+            # x_positions = bone_2d[:,:,:,0]
+            # mask[:,: , y_positions, x_positions] = 1
+            # mask = mask.float()
 
             val_img = image.cuda()
             val_pose = mask.cuda()

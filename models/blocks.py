@@ -34,18 +34,13 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     support it as an extra input.
     """
     def forward(self, x, emb=None, cond=None, lateral=None):
-        i = 0
         for layer in self:
             if isinstance(layer, TimestepBlock):
-                if len(self)==2 and i>=1:
-                    x = layer(x, emb=emb, cond=None, lateral=lateral)
-                else:
-                    x = layer(x, emb=emb, cond=None, lateral=lateral)
+                x = layer(x, emb=emb, cond=None, lateral=lateral)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, cond)
             else:
                 x = layer(x)
-            i+=1
         return x
 
 
