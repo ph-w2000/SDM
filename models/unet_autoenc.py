@@ -7,6 +7,7 @@ from torch.nn.functional import silu
 from .latentnet import *
 from .unet import *
 from .choices import *
+from .resnet import ResNet
 
 def prob_mask_like(shape, prob, device):
     if prob == 1:
@@ -44,7 +45,9 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
         )
 
         conf.in_channels = 4
-        self.encoder = BeatGANsEncoder(conf)
+        # self.encoder = BeatGANsEncoder(conf)
+        self.encoder = ResNet(3, resnet_type='18')
+
 
         if conf.latent_net_conf is not None:
             self.latent_net = conf.latent_net_conf.make_model()
@@ -73,7 +76,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
 
     def encode(self, x):
 
-        cond = self.encoder.forward(x)
+        cond = self.encoder.forward(x[:,:2,:,:], x[:,2:,:,:])
 
         return {'cond': cond}
 
@@ -211,7 +214,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
         dec_time_emb = emb
         # where in the model to supply style conditions
         enc_cond_emb = cond
-        mid_cond_emb = cond[-1]
+        mid_cond_emb = cond
         dec_cond_emb = cond #+ [cond[-1]]
 
         # hs = []
@@ -227,7 +230,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 for j in range(self.input_num_blocks[i]):
                     h = self.input_blocks[k](h,
                                              emb=enc_time_emb,
-                                             cond=enc_cond_emb[k])
+                                             cond=None)
 
                     hs[i].append(h)
                     #h = th.concat([h, enc_cond_emb[k]], 1)
@@ -265,7 +268,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 # else:
                 h = self.output_blocks[k](h,
                                         emb=dec_time_emb,
-                                        cond=dec_cond_emb[-k-1],
+                                        cond=None,
                                         lateral=lateral)
                 k += 1
         pred = self.out(h)
