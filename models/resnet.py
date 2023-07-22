@@ -6,7 +6,7 @@ import os
 import random
 import numpy as np
 from einops import rearrange, reduce, repeat
-# from .network import RSN
+from .network import RSN
         
 ## Adapted from https://github.com/joaomonteirof/e2e_antispoofing
 
@@ -187,8 +187,6 @@ class ResNet(nn.Module):
 
         self.layer1 = self._make_layer(block, 64, layers[0], stride=1)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        # self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        # self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
         self.in_planes = 16
 
@@ -197,35 +195,17 @@ class ResNet(nn.Module):
         self.layer32 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer42 = self._make_layer(block, 512, layers[3], stride=2)
         
-        self.conv52 = nn.Conv2d(512 * block.expansion, 512, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
+        self.conv52 = nn.Conv2d(512 * block.expansion, 512-14, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
                                bias=False)
         
-        self.bn52 = nn.BatchNorm2d(512)
+        self.bn52 = nn.BatchNorm2d(512-14)
 
         self.initialize_params()
-        self.attention = SelfAttention(512)
+        self.attention = SelfAttention(512-14)
 
-        # self.boneNet = RSN("", False)
-
-        self.deconv1 = nn.ConvTranspose2d(256, 256, kernel_size=4, stride=(5,6), padding=1)
-        self.dbn1 = nn.BatchNorm2d(256)
-        self.deconv2 = nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1)
-        self.dbn2 = nn.BatchNorm2d(128)
-
-        
         self.cs_attention = CrossAttention(26*33)
 
-        self.deconv3 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn3 = nn.BatchNorm2d(64)
-        self.deconv4 = nn.ConvTranspose2d(64, 14, kernel_size=4, stride=(2,1), padding=1)
-        self.dbn4 = nn.BatchNorm2d(14)
-
-        self.pool1 = nn.AdaptiveAvgPool2d((160, 200))
-
-        self.conv6 = nn.Conv2d(14, 64, kernel_size=(3, 3), stride=(1, 1) , padding = 1, bias=False)
-        self.bn6 = nn.BatchNorm2d(64)
-        self.conv7 = nn.Conv2d(64, 2, kernel_size=(3, 3), stride=(1, 1) , padding = 1, bias=False)
-        self.bn7 = nn.BatchNorm2d(2)
+        self.boneNet = RSN("", False)
 
 
     def initialize_params(self):
@@ -273,17 +253,9 @@ class ResNet(nn.Module):
         stats = self.attention(x.permute(0, 2, 3, 1).contiguous())
         x = stats.permute(0, 3, 1, 2).contiguous()
 
-        # x = self.dbn1(self.deconv1(x))
-        # x = self.dbn2(self.deconv2(x))
-        # x = self.dbn3(self.deconv3(x))
-        # x = self.dbn4(self.deconv4(x))
-        # x = self.pool1(x)
+        attention = self.boneNet(torch.cat((x1,x2),dim=1))
 
-        # k, attention = self.boneNet(torch.cat((x,x1,x2),dim=1))
-        # x = x*attention
-        
-        # x = self.bn6(self.conv6(x))
-        # x = self.bn7(self.conv7(x))
+        x = torch.concat((x,attention),1)
 
         return x
     
