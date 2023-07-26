@@ -146,7 +146,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
+            # zeros = torch.zeros(mask_GT.shape)
+            # mask_GT = torch.cat((zeros,mask_GT),1).float()
+            # mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
 
             # import matplotlib.pyplot as plt
             # k = mask_GT.data.cpu().numpy()
@@ -185,7 +187,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob)
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
             
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
@@ -273,7 +275,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = val_batch[0][1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = val_batch[1]['masks'].float()
-            mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
+            # zeros = torch.zeros(mask_GT.shape)
+            # mask_GT = torch.cat((zeros,mask_GT),1).float()
+            # mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
             bone_2d = val_batch[1]['bone_2d'].long()
             filenames = val_batch[1]["image_id"]
 
@@ -295,13 +299,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 elif args.sample_algorithm == 'ddim':
                     print ('Sampling algorithm used: DDIM')
                     nsteps = 50
-                    noise = torch.randn(mask_GT.shape).cuda()
+                    noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
+                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                     samples = xs[-1].cuda()
 
-                    scaled_samples = torch.where(samples<=0, 0, 1).float()
-                    scaled_GT = torch.where(mask_GT<=0, 0, 1).float()
+                    scaled_samples = samples.float()
+                    scaled_GT = mask_GT.float()
                     acc = calculate_iou( scaled_samples,scaled_GT)
                     print("IoU: ", acc)
             

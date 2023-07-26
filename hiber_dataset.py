@@ -38,6 +38,7 @@ class HIBERDataset(Dataset):
 
 
         return self.get_image(idx*18), self.get_target(idx*18)
+        # return self.get_image(idx), self.get_target(idx)
     
     def get_image(self, img_id):
         data = self.ds[img_id]
