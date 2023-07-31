@@ -17,6 +17,7 @@ from tqdm import tqdm
 import numpy as np
 import data as deepfashion_data
 from model import UNet
+# from resnet import PredictionHead
 
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
@@ -121,7 +122,7 @@ def calculate_iou(array1, array2):
     return torch.mean(iou)
 
 
-def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb):
+def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb, embedding_model):
 
     import time
 
@@ -130,9 +131,10 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_list = []
     loss_mean_list = []
     loss_vb_list = []
+    loss_ce_list = []
 
  
-    for epoch in range(1000):
+    for epoch in range(2000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -149,19 +151,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             # zeros = torch.zeros(mask_GT.shape)
             # mask_GT = torch.cat((zeros,mask_GT),1).float()
             # mask_GT = replace_zeros_and_ones_with_random_values(mask_GT).float()
-
-            # import matplotlib.pyplot as plt
-            # k = mask_GT.data.cpu().numpy()
-            # k = np.transpose(k[0], (1, 2, 0))
-            # # Plot the image
-            # plt.imshow(k)
-            # plt.axis('off')  # Optional: turn off the axis
-            # plt.show()
-
-            # k = np.where(k<=0, 0, 1)
-            # plt.imshow(k)
-            # plt.show()
-            # exit()
 
             bone_2d = targets['bone_2d'].long()
 
@@ -187,11 +176,12 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
-            
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas, embedding_model=embedding_model)
+
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
             loss_vb = loss_dict['vb'].mean()
+            loss_ce = loss_dict['ce'].mean()
         
 
             optimizer.zero_grad()
@@ -204,6 +194,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             loss_list.append(loss.detach().item())
             loss_mean_list.append(loss_mse.detach().item())
             loss_vb_list.append(loss_vb.detach().item())
+            loss_ce_list.append(loss_ce.detach().item())
 
             accumulate(
                 ema, model.module, 0 if i < conf.training.scheduler.warmup else 0.9999
@@ -214,7 +205,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
-                            'loss_mean':(sum(loss_mean_list)/len(loss_mean_list)), 
+                            'loss_mse':(sum(loss_mean_list)/len(loss_mean_list)), 
+                            'loss_ce':(sum(loss_ce_list)/len(loss_ce_list)), 
                             'epoch':epoch,
                             'steps':i})
                 loss_list = []
@@ -301,7 +293,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     nsteps = 50
                     noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
+                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion, embedding_model=embedding_model)
                     samples = xs[-1].cuda()
 
                     scaled_samples = samples.float()
@@ -379,6 +371,8 @@ def main(settings, EXP_NAME):
     ema = get_model_conf().make_model()
     ema = ema.to(args.device)
 
+    # embedding_model = torch.load("./anti-spoofing_lfcc_model.pt", map_location="cuda").to(args.device)
+
     if DiffConf.distributed:
         model = nn.parallel.DistributedDataParallel(
             model,
@@ -407,7 +401,7 @@ def main(settings, EXP_NAME):
     diffusion = create_gaussian_diffusion(betas, predict_xstart = False)
 
     train(
-        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb
+        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb, None
     )
 
 if __name__ == "__main__":

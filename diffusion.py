@@ -43,11 +43,8 @@ def compute_alpha(beta, t):
     return a
 
 
-def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
+def ddim_steps(x, seq, model, b, x_cond, diffusion = None, embedding_model = None, **kwargs):
     x_cond[0] = [model.encode(x_cond[0])['cond'], model.encode(torch.zeros_like(x_cond[0]))['cond']]
-    # print(len(x_cond[0][0]),len(x_cond[0][1]))
-    # print(x_cond[0][0][0].shape,x_cond[0][1][0].shape)
-    # print(x_cond[1].shape)
     with torch.no_grad():
         n = x.size(0)
         seq_next = [-1] + list(seq[:-1])
@@ -75,10 +72,11 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
                 [_,_,ref,mask] = x_cond
                 xt = xt*mask + diffusion.q_sample(ref, t.long())*(1-mask)
             #xs.append(xt_next.to('cpu'))
-    xt = diffusion.pred_head(xt)
+    xt = diffusion.pred_head(xt.float())
     final_xt = []
     for x in xt:
-        final_xt.append(torch.argmax(x.softmax(0),0,keepdim=True))
+        o = x.softmax(0)[1:,:,:]
+        final_xt.append(torch.where(o>=0.5, 1, 0))
     final_xt = torch.stack(final_xt, dim=0)
     return [final_xt], x0_preds
 
@@ -986,7 +984,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None):
+    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None, embedding_model=None):
         """
         Compute training losses for a single timestep.
         :param model: the model to evaluate loss on.
@@ -999,7 +997,7 @@ class GaussianDiffusion:
                  Some mean or variance settings may also have other keys.
         """
         GT_map = x_start
-        x_start = self.embed_GT_mask(x_start.long())
+        x_start = self.embed_GT_mask(x_start.long()).detach()
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
@@ -1055,16 +1053,16 @@ class GaussianDiffusion:
             # target = noise 
             # with shape [8, 1, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
-            # terms["mse"] = mean_flat((target - model_output) ** 2)
+            terms["mse"] = mean_flat((target - model_output) ** 2)
             at = compute_alpha(betas.cuda(), t.long())
             x0_t = (x_t - model_output * (1 - at).sqrt()) / at.sqrt()
-            pred = self.pred_head(x0_t)
-            terms["mse"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
+            pred = self.pred_head(x0_t.float())
+            terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
 
             if "vb" in terms:
-                terms["loss"] = terms["mse"] + terms["vb"]
+                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"]
             else:
-                terms["loss"] = terms["mse"]
+                terms["loss"] = terms["mse"]*3 + terms["ce"]
         else:
             raise NotImplementedError(self.loss_type)
 
