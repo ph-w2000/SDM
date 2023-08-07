@@ -122,7 +122,7 @@ def calculate_iou(array1, array2):
     return torch.mean(iou)
 
 
-def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb, embedding_model):
+def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb):
 
     import time
 
@@ -164,7 +164,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas, embedding_model=embedding_model)
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
@@ -216,6 +216,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 #         "scheduler": scheduler.state_dict(),
                 #         "optimizer": optimizer.state_dict(),
                 #         "conf": conf,
+                #         "prediction_head_embedding": diffusion.embedding_table.state_dict(),
+                #         "prediction_head_conv": diffusion.conv_seg.state_dict(),
                 #     },
                 #     conf.training.ckpt_path + f"/model_{str(i).zfill(6)}.pt"
                 # )
@@ -273,7 +275,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     nsteps = 50
                     noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion, embedding_model=embedding_model)
+                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                     samples = xs[-1].cuda()
 
                     scaled_samples = samples.float()
@@ -367,7 +369,7 @@ def main(settings, EXP_NAME):
         if is_main_process():  print ('model loaded successfully')
 
     train(
-        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb, None
+        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb
     )
 
 if __name__ == "__main__":

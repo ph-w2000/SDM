@@ -43,7 +43,7 @@ def compute_alpha(beta, t):
     return a
 
 
-def ddim_steps(x, seq, model, b, x_cond, diffusion = None, embedding_model = None, **kwargs):
+def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
     x_cond[0] = [model.encode(x_cond[0])['cond'], model.encode(torch.zeros_like(x_cond[0]))['cond']]
     with torch.no_grad():
         n = x.size(0)
@@ -984,7 +984,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None, embedding_model=None):
+    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None):
         """
         Compute training losses for a single timestep.
         :param model: the model to evaluate loss on.

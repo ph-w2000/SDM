@@ -63,13 +63,15 @@ class Predictor():
         conf = DiffConfig(DiffusionConfig, './config/diffusion.conf', show=False)
 
         self.model = get_model_conf().make_model()
-        ckpt = torch.load("checkpoints/pidm_deepfashion/last.pt")
+        ckpt = torch.load("checkpoints/pidm_deepfashion-3090server/last.pt")
         self.model.load_state_dict(ckpt["ema"])
         self.model = self.model.cuda()
         self.model.eval()
 
         self.betas = conf.diffusion.beta_schedule.make()
         self.diffusion = create_gaussian_diffusion(self.betas, predict_xstart = False)#.to(device)
+        self.diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
+        self.diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
         
         self.pose_list = glob.glob('data/deepfashion_256x256/target_pose/*.npy')
         self.transforms = transforms.Compose([transforms.Resize((256,256), interpolation=Image.BICUBIC),
@@ -115,15 +117,15 @@ class Predictor():
             elif sample_algorithm == 'ddim':
                 noise = torch.randn(mask_GT.shape).cuda()
                 seq = range(0, 1000, 1000//nsteps)
-                xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, tgt_pose])
+                xs, x0_preds = ddim_steps(noise, seq, self.model, self.betas.cuda(), [src, tgt_pose], diffusion=self.diffusion)
                 samples = xs[-1].cuda()
 
 
             hor = image_hor[0].data.cpu().numpy()
             ver = image_ver[0].data.cpu().numpy()
 
-            scaled_samples = torch.where(samples<=0, 0, 1).float()
-            scaled_GT = torch.where(mask_GT<=0, 0, 1).float()
+            scaled_samples = samples.float()
+            scaled_GT = mask_GT.float()
             iou = calculate_iou( scaled_samples.data.cpu(),scaled_GT)
 
             total_iou+=iou
