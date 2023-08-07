@@ -45,9 +45,6 @@ def compute_alpha(beta, t):
 
 def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
     x_cond[0] = [model.encode(x_cond[0])['cond'], model.encode(torch.zeros_like(x_cond[0]))['cond']]
-    # print(len(x_cond[0][0]),len(x_cond[0][1]))
-    # print(x_cond[0][0][0].shape,x_cond[0][1][0].shape)
-    # print(x_cond[1].shape)
     with torch.no_grad():
         n = x.size(0)
         seq_next = [-1] + list(seq[:-1])
@@ -62,7 +59,7 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
         
             [cond, target_pose] = x_cond[:2]
             et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
-            et, model_var_values = torch.split(et, 16, dim=1)
+            et, model_var_values = torch.split(et, 64, dim=1)
             x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
             c1 = (
@@ -75,8 +72,13 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
                 [_,_,ref,mask] = x_cond
                 xt = xt*mask + diffusion.q_sample(ref, t.long())*(1-mask)
             #xs.append(xt_next.to('cpu'))
-
-    return [xt], x0_preds
+    xt = diffusion.pred_head(xt.float())
+    final_xt = []
+    for x in xt:
+        o = x.softmax(0)[1:,:,:]
+        final_xt.append(torch.where(o>=0.5, 1, 0))
+    final_xt = torch.stack(final_xt, dim=0)
+    return [final_xt], x0_preds
 
 
 
@@ -234,13 +236,20 @@ class GaussianDiffusion:
             / (1.0 - self.alphas_cumprod)
         )
 
-        self.mask_emb = nn.Embedding(2, 16).cuda()
+        self.embedding_table = nn.Embedding(2, 64).cuda()
 
-    def mask_encoder(self, mask):
-        x_start_enc = self.mask_emb(mask.long()).squeeze(1).permute(0, 3, 1, 2)
-        x_start_enc = (torch.sigmoid(x_start_enc) * 2 - 1) * 0.01
+        self.conv_seg = nn.Conv2d(64, 2, kernel_size=1).cuda()
 
-        return x_start_enc
+    def embed_GT_mask(self, mask):
+        mask = self.embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)
+        mask = (torch.sigmoid(mask) * 2 - 1) * 0.01
+
+        return mask
+    
+    def pred_head(self, x_0):
+        return self.conv_seg(x_0.float())
+    
+
 
     def q_mean_variance(self, x_start, t):
         """
@@ -975,7 +984,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None):
+    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None):
         """
         Compute training losses for a single timestep.
         :param model: the model to evaluate loss on.
@@ -987,16 +996,14 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
-        x_start = self.mask_encoder(x_start)
-        
+        GT_map = x_start
+        x_start = self.embed_GT_mask(x_start.long()).detach()
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
-
         x_t = self.q_sample(x_start, t, noise=noise)
         [img, target_pose] = cond_input
-
 
         terms = {}
 
@@ -1044,14 +1051,18 @@ class GaussianDiffusion:
                 ModelMeanType.EPSILON: noise,
             }[self.model_mean_type]
             # target = noise 
-            # with shape [8, 16, 160, 200]
+            # with shape [8, 64, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
+            at = compute_alpha(betas.cuda(), t.long())
+            x0_t = (x_t - model_output * (1 - at).sqrt()) / at.sqrt()
+            pred = self.pred_head(x0_t.float())
+            terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
 
             if "vb" in terms:
-                terms["loss"] = terms["mse"] + terms["vb"]
+                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"]
             else:
-                terms["loss"] = terms["mse"]
+                terms["loss"] = terms["mse"]*3 + terms["ce"]
         else:
             raise NotImplementedError(self.loss_type)
 

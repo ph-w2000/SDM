@@ -126,7 +126,7 @@ class ResNet_top(nn.Module):
 
     def __init__(self):
         super(ResNet_top, self).__init__()
-        self.conv = conv_bn_relu(18, 64, kernel_size=7, stride=2, padding=3,
+        self.conv = conv_bn_relu(4, 64, kernel_size=7, stride=2, padding=3,
                 has_bn=True, has_relu=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
@@ -369,18 +369,10 @@ class RSN(nn.Module):
                     )
             setattr(self, 'stage%d' % i, self.mspn_modules[i])
 
-        self.pool = nn.AdaptiveAvgPool2d((160,200))
-        self.sf2d = nn.Softmax2d()
-
-        self.deconv3 = nn.ConvTranspose2d(14, 64, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn3 = nn.BatchNorm2d(64)
-        self.deconv4 = nn.ConvTranspose2d(64, 14, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn4 = nn.BatchNorm2d(14)
-        
-        self.deconv32 = nn.ConvTranspose2d(14, 64, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn32 = nn.BatchNorm2d(64)
-        self.deconv42 = nn.ConvTranspose2d(64, 14, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn42 = nn.BatchNorm2d(14)
+        self.conv1 = nn.Conv2d(14, 64, kernel_size=(3, 3), stride=(3, 3), padding=(1, 1), bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.conv2 = nn.Conv2d(64, 14, kernel_size=(3, 3), stride=(3, 3), padding=(1, 1), bias=False)
+        self.bn2 = nn.BatchNorm2d(14)
         
     def forward(self, imgs):
         b, num_keypoints, height, width = imgs.shape
@@ -394,31 +386,7 @@ class RSN(nn.Module):
 
         attention_map = outputs[-1][-1]
 
-        x_attention_map = self.dbn3(self.deconv3(attention_map))
-        x_attention_map = self.dbn4(self.deconv4(x_attention_map))
-        reshaped = x_attention_map.view(x_attention_map.size(0), x_attention_map.size(1), -1)
-        x_attention_map = F.softmax(reshaped, dim=2)
-        
-        x_coor = torch.arange(width, device=attention_map.device)
-        x_coor = x_coor.repeat(height).unsqueeze(0).unsqueeze(0)
-        x_keypoints = torch.sum((x_attention_map * x_coor),dim=-1)/200
+        attention_map = self.bn1(self.conv1(attention_map))
+        attention_map = self.bn2(self.conv2(attention_map))
 
-        y_attention_map = self.dbn32(self.deconv32(attention_map))
-        y_attention_map = self.dbn42(self.deconv42(y_attention_map))
-        reshaped = y_attention_map.view(y_attention_map.size(0), y_attention_map.size(1), -1)
-        y_attention_map = F.softmax(reshaped, dim=2)
-
-        y_coor = torch.arange(height, device=attention_map.device)
-        y_coor = y_coor.repeat_interleave(width).unsqueeze(0).unsqueeze(0)
-        y_keypoints = torch.sum((y_attention_map * y_coor),dim=-1)/160
-
-        keypoints = torch.stack((x_keypoints, y_keypoints), dim=2).unsqueeze(1)
-
-        return keypoints, self.sf2d(self.pool(attention_map))
-
-
-if __name__ == '__main__':
-    mspn = RSN("", True)
-    imgs = torch.randn(2, 4, 160, 200)
-    key, out = mspn(imgs)
-    print(key.shape, out.shape)
+        return attention_map

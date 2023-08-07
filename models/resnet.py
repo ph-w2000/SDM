@@ -6,7 +6,9 @@ import os
 import random
 import numpy as np
 from einops import rearrange, reduce, repeat
-# from .network import RSN
+from einops.layers.torch import Rearrange
+from torch import einsum
+from .network import RSN
         
 ## Adapted from https://github.com/joaomonteirof/e2e_antispoofing
 
@@ -48,7 +50,118 @@ class CrossAttention(nn.Module):
         context = context.view(batch_size, keypoints, height, width)  # Shape: [B, C, H, W]
         
         return context
+
+class PreNorm(nn.Module):
+    def __init__(self, dim, fn):
+        super().__init__()
+        self.norm = nn.LayerNorm(dim)
+        self.fn = fn
+    def forward(self, x, **kwargs):
+        return self.fn(self.norm(x), **kwargs)
+
+
+class FeedForward(nn.Module):
+    def __init__(self, dim, hidden_dim, dropout=0.):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(dim, hidden_dim),
+            nn.GELU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, dim), 
+            nn.Dropout(dropout)
+        )
+    def forward(self, x):
+        return self.net(x)
+
+class Attention(nn.Module):              
+    def __init__(self, dim, heads=8, dim_head=64, dropout=0.):
+        super().__init__()
+        inner_dim = dim_head * heads
+        project_out = not (heads == 1 and dim_head == dim)
+
+        self.heads = heads
+        self.scale = dim_head ** -0.5
+
+        self.attend = nn.Softmax(dim=-1)
+        self.to_qkv = nn.Linear(dim, inner_dim * 3, bias=False)
+
+        self.to_out = nn.Sequential(
+            nn.Linear(inner_dim, dim),
+            nn.Dropout(dropout),
+        ) if project_out else nn.Identity()
+
+    def forward(self, x):
+        b, n, _, h = *x.shape, self.heads
+        qkv = self.to_qkv(x).chunk(3, dim=-1)           # (b, n(65), dim*3) ---> 3 * (b, n, dim)
+        q, k, v = map(lambda t: rearrange(t, 'b n (h d) -> b h n d', h=h), qkv)          # q, k, v   (b, h, n, dim_head(64))
+
+        dots = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
+
+        attn = self.attend(dots)
+
+        out = einsum('b h i j, b h j d -> b h i d', attn, v)
+        out = rearrange(out, 'b h n d -> b n (h d)')
+        return self.to_out(out)
+
+
+class Transformer(nn.Module):
+    def __init__(self, dim, depth, heads, dim_head, mlp_dim, dropout=0.):
+        super().__init__()
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PreNorm(dim, Attention(dim, heads=heads, dim_head=dim_head, dropout=dropout)),
+                PreNorm(dim, FeedForward(dim, mlp_dim, dropout=dropout))
+            ]))
     
+    def forward(self, x):
+        for attn, ff in self.layers:
+            x = attn(x) + x
+            x = ff(x) + x
+        return x
+
+
+class ViT(nn.Module):
+    def __init__(self, dim, depth, heads, mlp_dim, channels=256, dim_head=64, dropout=0.2, emb_dropout=0.):
+        super(ViT, self).__init__()
+        image_height, image_width = 26, 33
+        patch_height, patch_width = 2, 3
+
+        assert  image_height % patch_height ==0 and image_width % patch_width == 0
+
+        num_patches = (image_height // patch_height) * (image_width // patch_width)
+        patch_dim = channels * patch_height * patch_width
+
+        self.to_patch_embedding = nn.Sequential(
+            Rearrange('b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1=patch_height, p2=patch_width),
+            nn.Linear(patch_dim, dim)
+        )
+
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches, dim))
+        self.dropout = nn.Dropout(emb_dropout)
+
+        self.transformer = Transformer(dim, depth, heads, dim_head, mlp_dim, dropout)
+
+        self.back_to_patch_embedding = nn.Sequential(
+            nn.Linear(dim, patch_dim),
+            Rearrange('b (h w) (p1 p2 c) -> b c (h p1) (w p2)', h=int(image_height/patch_height), w=int(image_width/patch_width), p1=patch_height, p2=patch_width )        
+        )
+
+        self.conv = nn.Conv2d(dim, int(dim/2), kernel_size=3, stride=1, padding=1)
+
+    def forward(self, img):
+        x = self.to_patch_embedding(img)        # b c (h p1) (w p2) -> b (h w) (p1 p2 c) -> b (h w) dim
+        b, n, _ = x.shape           # b表示batchSize, n表示每个块的空间分辨率, _表示一个块内有多少个值
+
+        x += self.pos_embedding[:, :(n+1)]                  # 加位置嵌入（直接加）      (b, 65, dim)
+        x = self.dropout(x)
+
+        x = self.transformer(x)
+
+        x = self.back_to_patch_embedding(x)
+
+        return self.conv(x)
+
     
 class SelfAttention(nn.Module):
     def __init__(self, hidden_size, mean_only=False):
@@ -187,8 +300,6 @@ class ResNet(nn.Module):
 
         self.layer1 = self._make_layer(block, 64, layers[0], stride=1)
         self.layer2 = self._make_layer(block, 128, layers[1], stride=2)
-        # self.layer3 = self._make_layer(block, 256, layers[2], stride=2)
-        # self.layer4 = self._make_layer(block, 512, layers[3], stride=2)
 
         self.in_planes = 16
 
@@ -197,35 +308,19 @@ class ResNet(nn.Module):
         self.layer32 = self._make_layer(block, 256, layers[2], stride=2)
         self.layer42 = self._make_layer(block, 512, layers[3], stride=2)
         
-        self.conv52 = nn.Conv2d(512 * block.expansion, 512, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
+        self.conv52 = nn.Conv2d(512 * block.expansion, 512-14, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
                                bias=False)
         
-        self.bn52 = nn.BatchNorm2d(512)
+        self.bn52 = nn.BatchNorm2d(512-14)
 
         self.initialize_params()
-        self.attention = SelfAttention(512)
+        self.attention = SelfAttention(512-14)
 
-        # self.boneNet = RSN("", False)
-
-        self.deconv1 = nn.ConvTranspose2d(256, 256, kernel_size=4, stride=(5,6), padding=1)
-        self.dbn1 = nn.BatchNorm2d(256)
-        self.deconv2 = nn.ConvTranspose2d(256, 128, kernel_size=4, stride=2, padding=1)
-        self.dbn2 = nn.BatchNorm2d(128)
-
-        
         self.cs_attention = CrossAttention(26*33)
 
-        self.deconv3 = nn.ConvTranspose2d(128, 64, kernel_size=4, stride=(2,2), padding=1)
-        self.dbn3 = nn.BatchNorm2d(64)
-        self.deconv4 = nn.ConvTranspose2d(64, 14, kernel_size=4, stride=(2,1), padding=1)
-        self.dbn4 = nn.BatchNorm2d(14)
+        self.boneNet = RSN("", False)
 
-        self.pool1 = nn.AdaptiveAvgPool2d((160, 200))
-
-        self.conv6 = nn.Conv2d(14, 64, kernel_size=(3, 3), stride=(1, 1) , padding = 1, bias=False)
-        self.bn6 = nn.BatchNorm2d(64)
-        self.conv7 = nn.Conv2d(64, 2, kernel_size=(3, 3), stride=(1, 1) , padding = 1, bias=False)
-        self.bn7 = nn.BatchNorm2d(2)
+        self.vit = ViT(256,3,8,512)
 
 
     def initialize_params(self):
@@ -264,7 +359,7 @@ class ResNet(nn.Module):
         x = self.activation(self.bn12(x))
         x = self.layer12(x)
         ver_map = self.layer22(x)
-        h_v_attention = self.cs_attention(ver_map,hor_map)
+        h_v_attention = self.vit(torch.cat((ver_map,hor_map),1))
         x = self.layer32(h_v_attention)
         x = self.layer42(x)
         x = self.conv52(x)
@@ -273,17 +368,9 @@ class ResNet(nn.Module):
         stats = self.attention(x.permute(0, 2, 3, 1).contiguous())
         x = stats.permute(0, 3, 1, 2).contiguous()
 
-        # x = self.dbn1(self.deconv1(x))
-        # x = self.dbn2(self.deconv2(x))
-        # x = self.dbn3(self.deconv3(x))
-        # x = self.dbn4(self.deconv4(x))
-        # x = self.pool1(x)
+        attention = self.boneNet(torch.cat((x1,x2),dim=1))
 
-        # k, attention = self.boneNet(torch.cat((x,x1,x2),dim=1))
-        # x = x*attention
-        
-        # x = self.bn6(self.conv6(x))
-        # x = self.bn7(self.conv7(x))
+        x = torch.concat((x,attention),1)
 
         return x
     

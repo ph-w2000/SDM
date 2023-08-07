@@ -17,6 +17,7 @@ from tqdm import tqdm
 import numpy as np
 import data as deepfashion_data
 from model import UNet
+# from resnet import PredictionHead
 
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
@@ -130,9 +131,10 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_list = []
     loss_mean_list = []
     loss_vb_list = []
+    loss_ce_list = []
 
  
-    for epoch in range(300):
+    for epoch in range(2000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
 
@@ -146,29 +148,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-
-            # import matplotlib.pyplot as plt
-            # k = mask_GT.data.cpu().numpy()
-            # k = np.transpose(k[0], (1, 2, 0))
-            # # Plot the image
-            # plt.imshow(k)
-            # plt.axis('off')  # Optional: turn off the axis
-            # plt.show()
-
-            # k = np.where(k<=0, 0, 1)
-            # plt.imshow(k)
-            # plt.show()
-            # exit()
-
-            bone_2d = targets['bone_2d'].long()
-
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
-            # B, N, K, _ = bone_2d.shape
-            # b_indices = torch.arange(B).view(B, 1, 1, 1)
-            # n_indices = torch.arange(N).view(1, N, 1, 1)
-            # x_positions = bone_2d[:, :, :, 0:1].long()
-            # y_positions = bone_2d[:, :, :, 1:].long()
-            # mask[b_indices, n_indices, y_positions, x_positions] = 1
 
             img = image
             target_img = mask_GT
@@ -184,11 +164,12 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob)
-            
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
+
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
             loss_vb = loss_dict['vb'].mean()
+            loss_ce = loss_dict['ce'].mean()
         
 
             optimizer.zero_grad()
@@ -201,6 +182,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             loss_list.append(loss.detach().item())
             loss_mean_list.append(loss_mse.detach().item())
             loss_vb_list.append(loss_vb.detach().item())
+            loss_ce_list.append(loss_ce.detach().item())
 
             accumulate(
                 ema, model.module, 0 if i < conf.training.scheduler.warmup else 0.9999
@@ -211,13 +193,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
-                            'loss_mean':(sum(loss_mean_list)/len(loss_mean_list)), 
+                            'loss_mse':(sum(loss_mean_list)/len(loss_mean_list)), 
+                            'loss_ce':(sum(loss_ce_list)/len(loss_ce_list)), 
                             'epoch':epoch,
                             'steps':i})
                 loss_list = []
                 loss_mean_list = []
                 loss_vb_list = []
-
 
             if i%args.save_checkpoints_every_iters == 0 and is_main_process():
 
@@ -227,16 +209,18 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 else:
                     model_module = model
 
-                torch.save(
-                    {
-                        "model": model_module.state_dict(),
-                        "ema": ema.state_dict(),
-                        "scheduler": scheduler.state_dict(),
-                        "optimizer": optimizer.state_dict(),
-                        "conf": conf,
-                    },
-                    conf.training.ckpt_path + f"/model_{str(i).zfill(6)}.pt"
-                )
+                # torch.save(
+                #     {
+                #         "model": model_module.state_dict(),
+                #         "ema": ema.state_dict(),
+                #         "scheduler": scheduler.state_dict(),
+                #         "optimizer": optimizer.state_dict(),
+                #         "conf": conf,
+                #         "prediction_head_embedding": diffusion.embedding_table.state_dict(),
+                #         "prediction_head_conv": diffusion.conv_seg.state_dict(),
+                #     },
+                #     conf.training.ckpt_path + f"/model_{str(i).zfill(6)}.pt"
+                # )
 
         if is_main_process():
 
@@ -256,12 +240,14 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     "scheduler": scheduler.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "conf": conf,
+                    "prediction_head_embedding": diffusion.embedding_table.state_dict(),
+                    "prediction_head_conv": diffusion.conv_seg.state_dict(),
                 },
                 conf.training.ckpt_path + '/last.pt'
                
             )
 
-        if (epoch)%args.save_wandb_images_every_epochs==0:
+        if (epoch)%args.save_wandb_images_every_epochs==0 and is_main_process():
 
             print ('Generating samples at epoch number ' + str(epoch))
 
@@ -272,14 +258,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = val_batch[0][1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = val_batch[1]['masks'].float()
-            bone_2d = val_batch[1]['bone_2d'].long()
-            filenames = val_batch[1]["image_id"]
 
             mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
-            # y_positions = bone_2d[:,:,:,1]
-            # x_positions = bone_2d[:,:,:,0]
-            # mask[:,: , y_positions, x_positions] = 1
-            # mask = mask.float()
 
             val_img = image.cuda()
             val_pose = mask.cuda()
@@ -293,57 +273,40 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 elif args.sample_algorithm == 'ddim':
                     print ('Sampling algorithm used: DDIM')
                     nsteps = 50
-                    noise = torch.randn([image_hor.shape[0], 16, 160, 200]).cuda()
+
+                    noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                     seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose])
+                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                     samples = xs[-1].cuda()
 
-                    distance_to_B0 = torch.sum((samples.permute(0,2,3,1) - diffusion.mask_emb.weight[0]) ** 2, dim=3)
-                    distance_to_B1 = torch.sum((samples.permute(0,2,3,1) - diffusion.mask_emb.weight[1]) ** 2, dim=3)
-                    binary_tensor = distance_to_B0 < distance_to_B1
-                    binary_tensor = binary_tensor.float()
-
-                    scaled_samples = binary_tensor.unsqueeze(1).float()
+                    scaled_samples = samples.float()
                     scaled_GT = mask_GT.float()
                     acc = calculate_iou( scaled_samples,scaled_GT)
                     print("IoU: ", acc)
             
             if is_main_process():
 
-                heatmaps_hor = torch.cat([val_img[:,0:1,:,:]], -1)
-                heatmaps_samples_hor = [torch.zeros_like(heatmaps_hor) for _ in range(dist.get_world_size())]
-                dist.all_gather(heatmaps_samples_hor, heatmaps_hor)
+                # heatmaps_hor = torch.cat([val_img[:,0:1,:,:]], -1)
+                # heatmaps_samples_hor = [torch.zeros_like(heatmaps_hor) for _ in range(dist.get_world_size())]
+                # dist.all_gather(heatmaps_samples_hor, heatmaps_hor)
 
-                heatmaps_ver = torch.cat([val_img[:,2:3,:,:]], -1)
-                heatmaps_samples_ver = [torch.zeros_like(heatmaps_ver) for _ in range(dist.get_world_size())]
-                dist.all_gather(heatmaps_samples_ver, heatmaps_ver)
+                # heatmaps_ver = torch.cat([val_img[:,2:3,:,:]], -1)
+                # heatmaps_samples_ver = [torch.zeros_like(heatmaps_ver) for _ in range(dist.get_world_size())]
+                # dist.all_gather(heatmaps_samples_ver, heatmaps_ver)
 
                 prediction = torch.cat([scaled_samples], -1)
-                prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
-                dist.all_gather(prediction_samples, prediction)
+                # prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
+                # dist.all_gather(prediction_samples, prediction)
 
                 MaGT = torch.cat([scaled_GT], -1)
-                MaGT_samples = [torch.zeros_like(MaGT) for _ in range(dist.get_world_size())]
-                dist.all_gather(MaGT_samples, MaGT)
+                # MaGT_samples = [torch.zeros_like(MaGT) for _ in range(dist.get_world_size())]
+                # dist.all_gather(MaGT_samples, MaGT)
 
-                # import matplotlib.pyplot as plt
-                # k = scaled_samples.data.cpu().numpy()
-                # k = np.transpose(k[0], (1, 2, 0))
-                # # Plot the image
-                # plt.imshow(k)
-                # plt.axis('off')  # Optional: turn off the axis
-                # plt.show()
 
-                # k = scaled_GT.data.cpu().numpy()
-                # k = np.transpose(k[0], (1, 2, 0))
-                # plt.imshow(k)
-                # plt.show()
-                # exit()
-
-                wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
-                wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
-                wandb.log({'Prediction':wandb.Image(torch.cat(prediction_samples, -2))})
-                wandb.log({'GT':wandb.Image(torch.cat(MaGT_samples, -2))})
+                # wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
+                # wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
+                wandb.log({'Prediction':wandb.Image(prediction)})
+                wandb.log({'GT':wandb.Image(MaGT)})
 
 
 def main(settings, EXP_NAME):
@@ -386,6 +349,8 @@ def main(settings, EXP_NAME):
 
     optimizer = DiffConf.training.optimizer.make(model.parameters())
     scheduler = DiffConf.training.scheduler.make(optimizer)
+    betas = DiffConf.diffusion.beta_schedule.make()
+    diffusion = create_gaussian_diffusion(betas, predict_xstart = False)
 
     if DiffConf.ckpt is not None:
         ckpt = torch.load(DiffConf.ckpt, map_location=lambda storage, loc: storage)
@@ -398,11 +363,10 @@ def main(settings, EXP_NAME):
 
         ema.load_state_dict(ckpt["ema"])
         scheduler.load_state_dict(ckpt["scheduler"])
+        diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
+        diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
 
         if is_main_process():  print ('model loaded successfully')
-
-    betas = DiffConf.diffusion.beta_schedule.make()
-    diffusion = create_gaussian_diffusion(betas, predict_xstart = False)
 
     train(
         DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb
@@ -448,6 +412,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    #DiffConf.ckpt = "checkpoints/last.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion-3090server/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

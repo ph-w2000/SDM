@@ -48,7 +48,7 @@ def create_dataloader(opt, distributed, labels_required, is_inference):
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        sampler=data_sampler(dataset, shuffle=not is_inference, distributed=distributed),
+        sampler=data_sampler(dataset, shuffle=True, distributed=distributed),
         drop_last=not is_inference,
         num_workers=getattr(opt, 'num_workers', 0),
         shuffle=False
@@ -73,7 +73,7 @@ def get_dataloader(opt, distributed, is_inference):
 
 def get_train_val_dataloader(opt, labels_required=False, distributed = False):
 
-    val_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=False,)
+    val_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=True,)
     train_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=False)
         
     return val_dataset, train_dataset
