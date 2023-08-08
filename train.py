@@ -164,7 +164,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1, betas=betas)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()

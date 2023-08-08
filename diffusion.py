@@ -58,7 +58,7 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
             at_next = compute_alpha(b, next_t.long())
         
             [cond, target_pose] = x_cond[:2]
-            et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
+            et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[1]
             et, model_var_values = torch.split(et, 64, dim=1)
             x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
