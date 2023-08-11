@@ -195,6 +195,7 @@ def main(settings, EXP_NAME):
 
     if DiffConf.ckpt is not None:
         ckpt = torch.load(DiffConf.ckpt, map_location=lambda storage, loc: storage)
+        print("load", DiffConf.ckpt)
 
         if DiffConf.distributed:
             model.module.load_state_dict(ckpt["model"])
