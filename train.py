@@ -164,7 +164,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1, betas=betas)
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
@@ -412,6 +412,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion-3090server/last.pt"
+    # DiffConf.ckpt = "checkpoints/pidm_deepfashion/last_epoch_41.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
