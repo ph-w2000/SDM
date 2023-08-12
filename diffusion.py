@@ -1056,6 +1056,7 @@ class GaussianDiffusion:
             terms["mse"] = mean_flat((target - model_output) ** 2)
             at = compute_alpha(betas.cuda(), t.long())
             x0_t = (x_t - model_output * (1 - at).sqrt()) / at.sqrt()
+
             pred = self.pred_head(x0_t.float())
             terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
 
