@@ -101,7 +101,8 @@ def calculate_iou(array1, array2):
             iou =  torch.zeros(1)
         ious.append(iou)
 
-    return torch.mean(ious)
+    ious = torch.stack(ious)
+    return torch.mean(ious, dim=0)
 
 
 def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
