@@ -98,9 +98,8 @@ def calculate_iou(array1, array2):
         if torch.sum(union) != 0:
             iou = torch.sum(intersection) / torch.sum(union)
         else:
-            iou =  torch.zeros(1)
+            iou =  torch.zeros(1).cuda()
         ious.append(iou)
-
     ious = torch.stack(ious)
     return torch.mean(ious, dim=0)
 
@@ -113,6 +112,9 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
     i = 0
 
     for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
+
+        if ind <27:
+            continue
 
         image_hor = imgs[0].float()
         image_ver = imgs[1].float()
@@ -163,8 +165,8 @@ def main(settings, EXP_NAME):
     [args, DiffConf, DataConf] = settings
 
     if is_main_process(): 
-        # wandb.init(mode="disabled")
-        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        wandb.init(mode="disabled")
+        # wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
@@ -197,7 +199,6 @@ def main(settings, EXP_NAME):
     if DiffConf.ckpt is not None:
         ckpt = torch.load(DiffConf.ckpt, map_location=lambda storage, loc: storage)
         print("load", DiffConf.ckpt)
-
         if DiffConf.distributed:
             model.module.load_state_dict(ckpt["model"])
 
@@ -253,6 +254,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last_123.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
