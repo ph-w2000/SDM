@@ -37,7 +37,7 @@ def create_dataloader(opt, distributed, labels_required, is_inference):
     # dataset = find_dataset_using_name(opt.type)
     # instance = dataset(opt, is_inference, labels_required)
     if is_inference:
-        dataset = HIBERDataset(opt.path, "val")
+        dataset = HIBERDataset(opt.path, "val_small")
     else:
         dataset = HIBERDataset(opt.path, "train")
     phase = 'val' if is_inference else 'training'
@@ -48,10 +48,9 @@ def create_dataloader(opt, distributed, labels_required, is_inference):
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        sampler=data_sampler(dataset, shuffle=True, distributed=distributed),
+        sampler=data_sampler(dataset, shuffle=not is_inference, distributed=distributed),
         drop_last=not is_inference,
         num_workers=getattr(opt, 'num_workers', 0),
-        shuffle=False
     )          
 
     return dataloader

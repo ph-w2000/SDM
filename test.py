@@ -17,6 +17,7 @@ from tqdm import tqdm
 import numpy as np
 import data as deepfashion_data
 from model import UNet
+from hiber_dataset import HIBERDataset
 
 def init_distributed():
 
@@ -113,9 +114,6 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
 
     for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
 
-        if ind <27:
-            continue
-
         image_hor = imgs[0].float()
         image_ver = imgs[1].float()
         image = torch.cat((image_hor,image_ver), 1)
@@ -177,7 +175,14 @@ def main(settings, EXP_NAME):
     DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
-    val_dataset, train_dataset = deepfashion_data.get_train_val_dataloader(DataConf.data, labels_required = True, distributed = True)
+    val_dataset = HIBERDataset(args.dataset_path, "val")
+    val_dataset = torch.utils.data.DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        sampler=torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False),
+        drop_last=False,
+        num_workers=getattr(8, 'num_workers', 0),
+    )
 
     model = get_model_conf().make_model()
     model = model.to(args.device)
