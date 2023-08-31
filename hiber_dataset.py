@@ -20,8 +20,10 @@ HIBER_CLASSES = (
 class HIBERDataset(Dataset):
 
     def __len__(self):
+        if self.split == "val_small":
+            return 66
+
         return len(self.ds)
-        # return 32
     
     def __init__(self, data_dir, split):
         self.data_dir = data_dir
@@ -29,15 +31,28 @@ class HIBERDataset(Dataset):
         self.split = split
         self.channel_first = False
 
-        self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode=self.split, channel_first=self.channel_first)
+        if split == "val_small":
+            self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode="val", channel_first=self.channel_first)
+        else:
+            self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode=self.split, channel_first=self.channel_first)
 
         self.classes = {i: n for i, n in enumerate(HIBER_CLASSES, 1)}
 
     def __getitem__(self, idx):
-        # idx = idx%32
+        if self.split == "val_small":
+            if idx % 6 ==0:
+                return self.get_image(0 + idx//6 * 590), self.get_target(0 + idx//6 * 590)
+            elif idx % 6 ==1:
+                return self.get_image(80 + idx//6 * 590), self.get_target(80 + idx//6 * 590)
+            elif idx % 6 ==2:
+                return self.get_image(190 + idx//6 * 590), self.get_target(190 + idx//6 * 590)
+            elif idx % 6 ==3:
+                return self.get_image(300 + idx//6 * 590), self.get_target(300 + idx//6 * 590)
+            elif idx % 6 ==4:
+                return self.get_image(410 + idx//6 * 590), self.get_target(410 + idx//6 * 590)
+            else:
+                return self.get_image(520 + idx//6 * 590), self.get_target(520 + idx//6 * 590)
 
-
-        # return self.get_image(idx*18), self.get_target(idx*18)
         return self.get_image(idx), self.get_target(idx)
     
     def get_image(self, img_id):
