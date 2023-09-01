@@ -147,9 +147,6 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 
                 if is_main_process():
 
-                    # heatmaps_hor = torch.cat([val_img[:,0:1,:,:]], -1)
-                    # heatmaps_ver = torch.cat([val_img[:,2:3,:,:]], -1)
-
                     prediction = torch.cat([scaled_samples], -1)
                     MaGT = torch.cat([scaled_GT], -1)
 
@@ -163,8 +160,8 @@ def main(settings, EXP_NAME):
     [args, DiffConf, DataConf] = settings
 
     if is_main_process(): 
-        wandb.init(mode="disabled")
-        # wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        # wandb.init(mode="disabled")
+        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
