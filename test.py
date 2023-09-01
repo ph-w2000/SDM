@@ -99,7 +99,7 @@ def calculate_iou(array1, array2):
         if torch.sum(union) != 0:
             iou = torch.sum(intersection) / torch.sum(union)
         else:
-            iou =  torch.zeros(1).cuda()
+            iou =  torch.zeros(1).squeeze().cuda()
         ious.append(iou)
     ious = torch.stack(ious)
     return torch.mean(ious, dim=0)
