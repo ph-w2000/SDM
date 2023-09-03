@@ -11,7 +11,7 @@ from torch import nn
 
 from .nn import (avg_pool_nd, conv_nd, linear, normalization,
                  timestep_embedding, torch_checkpoint, zero_module)
-
+from .vit import ViT
 
 class ScaleAt(Enum):
     after_norm = 'afternorm'
@@ -75,8 +75,8 @@ class ResBlockConfig(BaseConfig):
         self.out_channels = self.out_channels or self.channels
         self.cond_emb_channels = self.cond_emb_channels or self.emb_channels
 
-    def make_model(self):
-        return ResBlock(self)
+    def make_model(self, attention):
+        return ResBlock(self, attention=attention)
 
 
 class ResBlock(TimestepBlock):
@@ -94,9 +94,10 @@ class ResBlock(TimestepBlock):
         - act
         - conv
     """
-    def __init__(self, conf: ResBlockConfig):
+    def __init__(self, conf: ResBlockConfig, attention=False):
         super().__init__()
         self.conf = conf
+        self.attention = attention
 
         #############################
         # IN LAYERS
@@ -185,6 +186,14 @@ class ResBlock(TimestepBlock):
                                            conf.out_channels,
                                            kernel_size,
                                            padding=padding)
+            
+        #############################
+        # SURROUNDING ATTENTION LAYER
+        #############################
+
+        if self.attention and not self.updown:
+            self.vit = ViT(1024,1,8,512)
+
 
     def forward(self, x, emb=None, cond=None, lateral=None):
         """
@@ -246,6 +255,9 @@ class ResBlock(TimestepBlock):
                         cond_out = cond_out[..., None]
             else:
                 cond_out = None
+
+            if self.attention and not self.updown:
+                h = self.vit(h)
 
             # this is the new refactored code
             h = apply_conditions(

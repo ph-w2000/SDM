@@ -134,7 +134,7 @@ class BeatGANsUNetModel(nn.Module):
                         dims=conf.dims,
                         use_checkpoint=conf.use_checkpoint,
                         **kwargs,
-                    ).make_model()
+                    ).make_model(level==len(conf.channel_mult)-1)
                 ]
                 ch = int(mult * conf.model_channels)
                 if resolution in conf.attention_resolutions and block_id==conf.num_res_blocks-1:
@@ -168,7 +168,7 @@ class BeatGANsUNetModel(nn.Module):
                             use_checkpoint=conf.use_checkpoint,
                             down=True,
                             **kwargs,
-                        ).make_model() if conf.
+                        ).make_model(level==len(conf.channel_mult)-1) if conf.
                         resblock_updown else Downsample(ch,
                                                         conf.conv_resample,
                                                         dims=conf.dims,
@@ -190,7 +190,7 @@ class BeatGANsUNetModel(nn.Module):
                 dims=conf.dims,
                 use_checkpoint=conf.use_checkpoint,
                 **kwargs,
-            ).make_model(),
+            ).make_model(attention=False),
             AttentionBlock(
                 ch,
                 use_checkpoint=conf.use_checkpoint or conf.attn_checkpoint,
@@ -206,7 +206,7 @@ class BeatGANsUNetModel(nn.Module):
                 dims=conf.dims,
                 use_checkpoint=conf.use_checkpoint,
                 **kwargs,
-            ).make_model(),
+            ).make_model(attention=False),
         )
         self._feature_size += ch
 
@@ -235,7 +235,7 @@ class BeatGANsUNetModel(nn.Module):
                         has_lateral=True if ich > 0 else False,
                         lateral_channels=None,
                         **kwargs,
-                    ).make_model()
+                    ).make_model(level==len(conf.channel_mult)-1)
                 ]
                 # print(ch + ich, conf.embed_channels, conf.model_channels * mult)
                 ch = int(conf.model_channels * mult)
@@ -263,7 +263,7 @@ class BeatGANsUNetModel(nn.Module):
                             use_checkpoint=conf.use_checkpoint,
                             up=True,
                             **kwargs,
-                        ).make_model() if (
+                        ).make_model(level==len(conf.channel_mult)-1) if (
                             conf.resblock_updown
                         ) else Upsample(ch,
                                         conf.conv_resample,
