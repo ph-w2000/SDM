@@ -102,7 +102,7 @@ def calculate_iou(array1, array2):
             iou =  torch.zeros(1).squeeze().cuda()
         ious.append(iou)
     ious = torch.stack(ious)
-    return torch.mean(ious, dim=0)
+    return torch.sum(ious, dim=0)
 
 
 def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
@@ -110,7 +110,6 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
     import time
 
     acc = 0
-    i = 0
 
     for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
 
@@ -142,8 +141,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 scaled_GT = mask_GT.float()
                 iou = calculate_iou( scaled_samples,scaled_GT)
                 acc += iou
-                i+=1
-                print("IoU: ", iou)
+                print("IoU: ", iou/image_hor.shape[0])
                 
                 if is_main_process():
 
@@ -152,7 +150,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
 
                     wandb.log({'Prediction':wandb.Image(prediction)})
                     wandb.log({'GT':wandb.Image(MaGT)})
-    print("total IoU: " , acc/i)
+    print("total IoU: " , acc/len(val_loader.dataset))
 
 
 def main(settings, EXP_NAME):
@@ -256,6 +254,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
+    DiffConf.ckpt = "last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

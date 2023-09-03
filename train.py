@@ -120,7 +120,7 @@ def calculate_iou(array1, array2):
         ious.append(iou)
 
     ious = torch.stack(ious)
-    return torch.mean(ious, dim=0)
+    return torch.sum(ious, dim=0)
 
 def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb):
 
@@ -252,61 +252,49 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             print ('Generating samples at epoch number ' + str(epoch))
 
             acc = 0
+            all_scaled_samples = []
+            all_scaled_GT = []
 
-            val_batch = next(val_loader)
-            image_hor = val_batch[0][0].float()
-            image_ver = val_batch[0][1].float()
-            image = torch.cat((image_hor,image_ver), 1)
-            mask_GT = val_batch[1]['masks'].float()
+            for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
+                image_hor = imgs[0].float()
+                image_ver = imgs[1].float()
+                image = torch.cat((image_hor,image_ver), 1)
+                mask_GT = targets['masks'].float()
 
-            mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+                mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
 
-            val_img = image.cuda()
-            val_pose = mask.cuda()
-            mask_GT = mask_GT.cuda()
+                val_img = image.cuda()
+                val_pose = mask.cuda()
+                mask_GT = mask_GT.cuda()
 
-            with torch.no_grad():
+                with torch.no_grad():
 
-                if args.sample_algorithm == 'ddpm':
-                    print ('Sampling algorithm used: DDPM')
-                    samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
-                elif args.sample_algorithm == 'ddim':
-                    print ('Sampling algorithm used: DDIM')
-                    nsteps = 50
+                    if args.sample_algorithm == 'ddpm':
+                        print ('Sampling algorithm used: DDPM')
+                        samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
+                    elif args.sample_algorithm == 'ddim':
+                        print ('Sampling algorithm used: DDIM')
+                        nsteps = 50
 
-                    noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
-                    seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                    xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
-                    samples = xs[-1].cuda()
+                        noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
+                        seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
+                        xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
+                        samples = xs[-1].cuda()
 
-                    scaled_samples = samples.float()
-                    scaled_GT = mask_GT.float()
-                    acc = calculate_iou( scaled_samples,scaled_GT)
-                    print("IoU: ", acc)
-            
+                        scaled_samples = samples.float()
+                        scaled_GT = mask_GT.float()
+                        all_scaled_samples.append(scaled_samples)
+                        all_scaled_GT.append(scaled_GT)
+                        acc += calculate_iou( scaled_samples,scaled_GT)
+
+            print("total IoU: " , acc/len(val_loader.dataset))
             if is_main_process():
-
-                # heatmaps_hor = torch.cat([val_img[:,0:1,:,:]], -1)
-                # heatmaps_samples_hor = [torch.zeros_like(heatmaps_hor) for _ in range(dist.get_world_size())]
-                # dist.all_gather(heatmaps_samples_hor, heatmaps_hor)
-
-                # heatmaps_ver = torch.cat([val_img[:,2:3,:,:]], -1)
-                # heatmaps_samples_ver = [torch.zeros_like(heatmaps_ver) for _ in range(dist.get_world_size())]
-                # dist.all_gather(heatmaps_samples_ver, heatmaps_ver)
-
-                prediction = torch.cat([scaled_samples], -1)
-                # prediction_samples = [torch.zeros_like(prediction) for _ in range(dist.get_world_size())]
-                # dist.all_gather(prediction_samples, prediction)
-
-                MaGT = torch.cat([scaled_GT], -1)
-                # MaGT_samples = [torch.zeros_like(MaGT) for _ in range(dist.get_world_size())]
-                # dist.all_gather(MaGT_samples, MaGT)
-
-
-                # wandb.log({'Hor Map':wandb.Image(torch.cat(heatmaps_samples_hor, -2))})
-                # wandb.log({'Ver Map':wandb.Image(torch.cat(heatmaps_samples_ver, -2))})
-                wandb.log({'Prediction':wandb.Image(prediction)})
-                wandb.log({'GT':wandb.Image(MaGT)})
+                all_scaled_samples = torch.cat(all_scaled_samples, dim=0)
+                all_scaled_GT = torch.cat(all_scaled_GT, dim=0)
+                prediction = torch.cat([all_scaled_samples], -1)
+                MaGT = torch.cat([all_scaled_GT], -1)
+                wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(acc/len(val_loader.dataset))) )})
+                wandb.log({'GT':wandb.Image(wandb.Image(MaGT), caption=("step "+str(i)))})
 
 
 def main(settings, EXP_NAME):
@@ -328,12 +316,6 @@ def main(settings, EXP_NAME):
 
     val_dataset, train_dataset = deepfashion_data.get_train_val_dataloader(DataConf.data, labels_required = True, distributed = True)
     
-    def cycle(iterable):
-        while True:
-            for x in iterable:
-                yield x
-
-    val_dataset = iter(cycle(val_dataset))
 
     model = get_model_conf().make_model()
     model = model.to(args.device)
