@@ -148,7 +148,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                     prediction = torch.cat([scaled_samples], -1)
                     MaGT = torch.cat([scaled_GT], -1)
 
-                    wandb.log({'Prediction':wandb.Image(prediction)})
+                    wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(acc/len(val_loader.dataset))) )})
                     wandb.log({'GT':wandb.Image(MaGT)})
     print("total IoU: " , acc/len(val_loader.dataset))
 
