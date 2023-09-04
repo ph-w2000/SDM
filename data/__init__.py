@@ -41,14 +41,13 @@ def create_dataloader(opt, distributed, labels_required, is_inference):
     else:
         dataset = HIBERDataset(opt.path, "train")
     phase = 'val' if is_inference else 'training'
-    batch_size = opt.val.batch_size if is_inference else opt.train.batch_size
+    batch_size = opt.train.batch_size
     print("%s dataset [%s] of size %d was created" %
           (phase, opt.type, len(dataset)))
-    
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=batch_size,
-        sampler=data_sampler(dataset, shuffle=not is_inference, distributed=distributed),
+        sampler=data_sampler(dataset, shuffle=not is_inference, distributed=not is_inference),
         drop_last=not is_inference,
         num_workers=getattr(opt, 'num_workers', 0),
     )          

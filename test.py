@@ -174,7 +174,7 @@ def main(settings, EXP_NAME):
     val_dataset = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
-        sampler=torch.utils.data.distributed.DistributedSampler(val_dataset, shuffle=False),
+        sampler=torch.utils.data.SequentialSampler(val_dataset),
         drop_last=False,
         num_workers=getattr(8, 'num_workers', 0),
     )

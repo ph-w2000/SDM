@@ -345,6 +345,7 @@ def main(settings, EXP_NAME):
 
         ema.load_state_dict(ckpt["ema"])
         scheduler.load_state_dict(ckpt["scheduler"])
+        optimizer.load_state_dict(ckpt["optimizer"])
         diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
         diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
 
