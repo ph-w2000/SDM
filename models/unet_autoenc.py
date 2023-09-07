@@ -214,7 +214,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
         dec_time_emb = emb
         # where in the model to supply style conditions
         enc_cond_emb = cond
-        mid_cond_emb = cond
+        mid_cond_emb = cond[-1]
         dec_cond_emb = cond #+ [cond[-1]]
 
         # hs = []
@@ -228,9 +228,22 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
             k = 0
             for i in range(len(self.input_num_blocks)):
                 for j in range(self.input_num_blocks[i]):
-                    h = self.input_blocks[k](h,
+                    if k <= 11 and k>=9:
+                        h = self.input_blocks[k](h,
                                              emb=enc_time_emb,
-                                             cond=None)
+                                             cond=enc_cond_emb[0])
+                    elif k <= 14 and k>=12:
+                        h = self.input_blocks[k](h,
+                                                emb=enc_time_emb,
+                                                cond=enc_cond_emb[1])
+                    elif k <= 17 and k>=15:
+                        h = self.input_blocks[k](h,
+                                                emb=enc_time_emb,
+                                                cond=enc_cond_emb[2])
+                    else:
+                        h = self.input_blocks[k](h,
+                                            emb=enc_time_emb,
+                                            cond=None)
 
                     hs[i].append(h)
                     #h = th.concat([h, enc_cond_emb[k]], 1)
@@ -259,17 +272,26 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                     # print(i, j, lateral)
                 if h.shape == (h.shape[0], 512, 20, 24) :
                     h = F.pad(h, (0, 1, 0, 0))
-
-                # if k == 5 or k==11:
-                #     h = self.output_blocks[k](h,
-                #                           emb=dec_time_emb,
-                #                           cond=None,
-                #                           lateral=lateral)
-                # else:
-                h = self.output_blocks[k](h,
+                if k <= 2 and k>=0:
+                    h = self.output_blocks[k](h,
                                         emb=dec_time_emb,
-                                        cond=None,
+                                        cond=dec_cond_emb[2],
                                         lateral=lateral)
+                elif k <= 5 and k>=3:
+                    h = self.output_blocks[k](h,
+                                        emb=dec_time_emb,
+                                        cond=dec_cond_emb[1],
+                                        lateral=lateral)
+                elif k <= 8 and k>=6:
+                    h = self.output_blocks[k](h,
+                                        emb=dec_time_emb,
+                                        cond=dec_cond_emb[0],
+                                        lateral=lateral)
+                else:
+                    h = self.output_blocks[k](h,
+                                            emb=dec_time_emb,
+                                            cond=None,
+                                            lateral=lateral)
                 k += 1
         pred = self.out(h)
         return pred

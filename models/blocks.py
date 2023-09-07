@@ -36,7 +36,7 @@ class TimestepEmbedSequential(nn.Sequential, TimestepBlock):
     def forward(self, x, emb=None, cond=None, lateral=None):
         for layer in self:
             if isinstance(layer, TimestepBlock):
-                x = layer(x, emb=emb, cond=None, lateral=lateral)
+                x = layer(x, emb=emb, cond=cond, lateral=lateral)
             elif isinstance(layer, AttentionBlock):
                 x = layer(x, cond)
             else:
@@ -191,8 +191,8 @@ class ResBlock(TimestepBlock):
         # SURROUNDING ATTENTION LAYER
         #############################
 
-        if self.attention and not self.updown:
-            self.vit = ViT(1024,1,8,512)
+        # if self.attention and not self.updown:
+        #     self.vit = ViT(1024,1,8,512)
 
 
     def forward(self, x, emb=None, cond=None, lateral=None):
@@ -256,10 +256,13 @@ class ResBlock(TimestepBlock):
             else:
                 cond_out = None
 
-            if self.attention and not self.updown:
-                h = self.vit(h)
+            # if self.attention and not self.updown:
+            #     h = self.vit(h)
 
             # this is the new refactored code
+            if cond_out!=None:
+                if cond_out.shape != h.shape:
+                    cond_out = None
             h = apply_conditions(
                 h=h,
                 emb=emb_out,
