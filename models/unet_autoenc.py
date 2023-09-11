@@ -293,7 +293,11 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                                             cond=None,
                                             lateral=lateral)
                 k += 1
-        pred = self.out(h)
+        if x_cond != None:
+            pred = self.crf.forward(h, x_cond)
+        else:
+            pred = h
+        pred = self.out(pred)
         return pred
 
 

@@ -10,6 +10,7 @@ import torch.nn.functional as F
 from .choices import *
 from .config_base import BaseConfig
 from .blocks import *
+from . import CRF
 
 from .nn import (conv_nd, linear, normalization, timestep_embedding,
                  torch_checkpoint, zero_module)
@@ -277,6 +278,16 @@ class BeatGANsUNetModel(nn.Module):
         # print(input_block_chans)
         # print('inputs:', self.input_num_blocks)
         # print('outputs:', self.output_num_blocks)
+        
+        crf_config = CRF.default_conf
+        crf_config['filter_size'] = 3
+        crf_config['pyinn'] = False
+        crf_config['col_feats']['schan'] = 0.1
+        crf_config['trainable_bias'] = True
+        crf_config['trainable'] = True
+
+        self.crf = CRF.GaussCRF(conf=crf_config, shape=conf.image_size, nclasses=128,
+                                use_gpu=True)
 
         if conf.resnet_use_zero_module:
             self.out = nn.Sequential(
