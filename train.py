@@ -17,7 +17,43 @@ from tqdm import tqdm
 import numpy as np
 import data as deepfashion_data
 from model import UNet
+import torch.nn.functional as F
 # from resnet import PredictionHead
+
+def generate_neighbour_values(input_tensor):
+    # Extract the height and width
+    B, _, H, W = input_tensor.shape
+
+    # Initialize the output tensor with zeros
+    output_tensor = torch.zeros((B, 8, H+2, W+2), dtype=torch.float32)
+
+    # Extract the values from the original tensor
+    input_values = F.pad(input_tensor, (1, 1, 1, 1))
+    input_values = input_values.squeeze(1)  # Remove the singleton channel dimension
+
+    # Create masks based on the conditions
+    left_top_mask = torch.roll(input_values, shifts=(1,1), dims=(1, 2))
+    top_mask = torch.roll(input_values, shifts=1, dims=1)
+    right_top_mask = torch.roll(input_values, shifts=(1,-1), dims=(1, 2))
+    left_mask = torch.roll(input_values, shifts=1, dims=2)
+    right_mask = torch.roll(input_values, shifts=-1, dims=2)
+    bottom_mask = torch.roll(input_values, shifts=-1, dims=1)
+    left_bottom_mask = torch.roll(input_values, shifts=(-1, 1), dims=(1, 2))
+    right_bottom_mask = torch.roll(input_values, shifts=(-1, -1), dims=(1, 2))
+
+    # Fill the output tensor based on the masks
+    output_tensor[:, 0, :, :] = left_top_mask
+    output_tensor[:, 1, :, :] = top_mask
+    output_tensor[:, 2, :, :] = right_top_mask
+    output_tensor[:, 3, :, :] = left_mask 
+    output_tensor[:, 4, :, :] = right_mask
+    output_tensor[:, 5, :, :] = left_bottom_mask
+    output_tensor[:, 6, :, :] = bottom_mask
+    output_tensor[:, 7, :, :] = right_bottom_mask
+
+    # Convert the output tensor to binary values (0 or 1)
+    output_tensor = (output_tensor > 0).float()
+    return output_tensor[:,:,1:-1,1:-1]
 
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
@@ -157,6 +193,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             img = img.to(device)
             target_img = target_img.to(device)
             target_pose = target_pose.to(device)
+            neighbour_mask = generate_neighbour_values(mask_GT).to(device)
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],
@@ -164,7 +201,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
+            loss_dict = diffusion.training_losses(model, x_start = (target_img,neighbour_mask), t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
@@ -302,8 +339,8 @@ def main(settings, EXP_NAME):
     [args, DiffConf, DataConf] = settings
 
     if is_main_process(): 
-        # wandb.init(mode="disabled")
-        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        wandb.init(mode="disabled")
+        # wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
