@@ -53,7 +53,14 @@ def generate_neighbour_values(input_tensor):
 
     # Convert the output tensor to binary values (0 or 1)
     output_tensor = (output_tensor > 0).float()
-    return output_tensor[:,:,1:-1,1:-1]
+    output_tensor = output_tensor[:,:,1:-1,1:-1]
+
+    # reshaped_binary = output_tensor.permute(0, 2, 3, 1).reshape(-1, 8)
+
+    # # Convert binary tensor to integer tensor using vectorized operations
+    # reshaped_binary = (reshaped_binary * (2 ** torch.arange(8))).sum(dim=1, dtype=torch.int32).reshape([output_tensor.shape[0],1,160,200])
+    
+    return output_tensor.sum(1,keepdim=True)
 
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
@@ -193,7 +200,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             img = img.to(device)
             target_img = target_img.to(device)
             target_pose = target_pose.to(device)
-            neighbour_mask = generate_neighbour_values(mask_GT).to(device)
+            neighbour_mask = generate_neighbour_values(mask_GT).float().to(device)
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],

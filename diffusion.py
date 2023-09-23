@@ -240,14 +240,27 @@ class GaussianDiffusion:
 
         self.conv_seg = nn.Conv2d(64, 2, kernel_size=1).cuda()
 
+        self.neighbour_embedding_table = nn.Embedding(8, 64).cuda()
+
+        self.neighbour_conv_seg = nn.Conv2d(64, 8, kernel_size=1).cuda()
+
     def embed_GT_mask(self, mask):
         mask = self.embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)
         mask = (torch.sigmoid(mask) * 2 - 1) * 0.01
 
         return mask
     
+    def embed_neighbour_mask(self, mask):
+        mask = self.neighbour_embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)
+        mask = (torch.sigmoid(mask) * 2 - 1) * 0.01
+
+        return mask
+    
     def pred_head(self, x_0):
         return self.conv_seg(x_0.float())
+    
+    def neighbour_pred_head(self, x_0):
+        return self.neighbour_conv_seg(x_0.float())
     
 
 
@@ -996,13 +1009,19 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
+        neighbour_mask = x_start[1]
+        x_start = x_start[0]
         GT_map = x_start
+
+        neighbour_mask = self.embed_neighbour_mask(neighbour_mask.long()).detach()
         x_start = self.embed_GT_mask(x_start.long()).detach()
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
+            noise_neighbour = th.randn_like(neighbour_mask)
         x_t = self.q_sample(x_start, t, noise=noise)
+        neighbour_t = self.q_sample(neighbour_mask, t, noise=noise_neighbour)
         [img, target_pose] = cond_input
 
         terms = {}
