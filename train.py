@@ -173,6 +173,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
     loss_list = []
     loss_mean_list = []
+    loss_mean2_list = []
     loss_vb_list = []
     loss_ce_list = []
 
@@ -212,6 +213,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
+            loss_mse2 = loss_dict['mse2'].mean()
             loss_vb = loss_dict['vb'].mean()
             loss_ce = loss_dict['ce'].mean()
         
@@ -225,6 +227,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             loss_list.append(loss.detach().item())
             loss_mean_list.append(loss_mse.detach().item())
+            loss_mean2_list.append(loss_mse2.detach().item())
             loss_vb_list.append(loss_vb.detach().item())
             loss_ce_list.append(loss_ce.detach().item())
 
@@ -238,11 +241,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
                             'loss_mse':(sum(loss_mean_list)/len(loss_mean_list)), 
+                            'loss_mse2':(sum(loss_mean2_list)/len(loss_mean2_list)), 
                             'loss_ce':(sum(loss_ce_list)/len(loss_ce_list)), 
                             'epoch':epoch,
                             'steps':i})
                 loss_list = []
                 loss_mean_list = []
+                loss_mean2_list = []
                 loss_vb_list = []
 
             if i%args.save_checkpoints_every_iters == 0 and is_main_process():

@@ -1039,14 +1039,14 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x = torch.cat([x_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
+            model_output = model(x = torch.cat([x_t+neighbour_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
                 B, C = x_t.shape[:2]
-                assert model_output.shape == (B, C * 2, *x_t.shape[2:])
-                model_output, model_var_values = th.split(model_output, C, dim=1)
+                assert model_output.shape == (B, C * 3, *x_t.shape[2:])
+                model_output, neighbour_mask_output ,model_var_values = th.split(model_output, C, dim=1)
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
@@ -1073,16 +1073,17 @@ class GaussianDiffusion:
             # with shape [8, 64, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
+            terms["mse2"] = mean_flat((noise_neighbour - neighbour_mask_output) ** 2)
             at = compute_alpha(betas.cuda(), t.long())
-            x0_t = (x_t - model_output * (1 - at).sqrt()) / at.sqrt()
+            x0_t = ((x_t+neighbour_t) - (model_output + neighbour_mask_output) * (1 - at).sqrt()) / at.sqrt()
 
             pred = self.pred_head(x0_t.float())
             terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
 
             if "vb" in terms:
-                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"]
+                terms["loss"] = (terms["mse"] + terms["mse2"])*3 + terms["vb"] + terms["ce"]
             else:
-                terms["loss"] = terms["mse"]*3 + terms["ce"]
+                terms["loss"] = (terms["mse"] + terms["mse2"])*3 + terms["ce"]
         else:
             raise NotImplementedError(self.loss_type)
 
