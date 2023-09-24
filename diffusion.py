@@ -59,14 +59,14 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
         
             [cond, target_pose] = x_cond[:2]
             et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
-            et, model_var_values = torch.split(et, 64, dim=1)
-            x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
+            et, neighbour, model_var_values = torch.split(et, 64, dim=1)
+            x0_t = (xt - (et+neighbour) * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
             c1 = (
                 kwargs.get("eta", 0) * ((1 - at / at_next) * (1 - at_next) / (1 - at)).sqrt()
             )
             c2 = ((1 - at_next) - c1 ** 2).sqrt()
-            xt = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * et
+            xt = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * (et+neighbour)
 
             if len(x_cond) == 4:
                 [_,_,ref,mask] = x_cond
@@ -240,9 +240,9 @@ class GaussianDiffusion:
 
         self.conv_seg = nn.Conv2d(64, 2, kernel_size=1).cuda()
 
-        self.neighbour_embedding_table = nn.Embedding(8, 64).cuda()
+        self.neighbour_embedding_table = nn.Embedding(9, 64).cuda()
 
-        self.neighbour_conv_seg = nn.Conv2d(64, 8, kernel_size=1).cuda()
+        self.neighbour_conv_seg = nn.Conv2d(64, 9, kernel_size=1).cuda()
 
     def embed_GT_mask(self, mask):
         mask = self.embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)

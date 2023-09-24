@@ -291,6 +291,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     "conf": conf,
                     "prediction_head_embedding": diffusion.embedding_table.state_dict(),
                     "prediction_head_conv": diffusion.conv_seg.state_dict(),
+                    "prediction_neighbour_embedding": diffusion.neighbour_embedding_table.state_dict(),
+                    "prediction_neighbour_conv": diffusion.neighbour_conv_seg.state_dict(),
                 },
                 conf.training.ckpt_path + '/last.pt'
                
@@ -326,6 +328,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         nsteps = 50
 
                         noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
+                        noise2 = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
+                        noise = noise + noise2
                         seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                         xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                         samples = xs[-1].cuda()
@@ -351,8 +355,8 @@ def main(settings, EXP_NAME):
     [args, DiffConf, DataConf] = settings
 
     if is_main_process(): 
-        wandb.init(mode="disabled")
-        # wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        # wandb.init(mode="disabled")
+        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
@@ -397,6 +401,8 @@ def main(settings, EXP_NAME):
         optimizer.load_state_dict(ckpt["optimizer"])
         diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
         diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
+        diffusion.neighbour_embedding_table.load_state_dict(ckpt["prediction_neighbour_embedding"])
+        diffusion.neighbour_conv_seg.load_state_dict(ckpt["prediction_neighbour_conv"])
 
         if is_main_process():  print ('model loaded successfully')
 
