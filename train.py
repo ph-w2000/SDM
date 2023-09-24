@@ -154,6 +154,9 @@ def calculate_iou(array1, array2):
     for s in range(size):
         a1 = array1[s]
         a2 = array2[s]
+        if torch.all(a2 == 0):
+            ious.append(torch.ones(1).squeeze().cuda())
+            continue
         intersection = torch.logical_and(a1, a2)
         union = torch.logical_or(a1, a2)
         if torch.sum(union) != 0:
