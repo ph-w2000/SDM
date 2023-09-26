@@ -240,9 +240,9 @@ class GaussianDiffusion:
 
         self.conv_seg = nn.Conv2d(64, 2, kernel_size=1).cuda()
 
-        self.neighbour_embedding_table = nn.Embedding(9, 64).cuda()
+        self.neighbour_embedding_table = nn.Embedding(256, 64).cuda()
 
-        self.neighbour_conv_seg = nn.Conv2d(64, 9, kernel_size=1).cuda()
+        self.neighbour_conv_seg = nn.Conv2d(64, 256, kernel_size=1).cuda()
 
     def embed_GT_mask(self, mask):
         mask = self.embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)

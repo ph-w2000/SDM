@@ -55,12 +55,12 @@ def generate_neighbour_values(input_tensor):
     output_tensor = (output_tensor > 0).float()
     output_tensor = output_tensor[:,:,1:-1,1:-1]
 
-    # reshaped_binary = output_tensor.permute(0, 2, 3, 1).reshape(-1, 8)
+    reshaped_binary = output_tensor.permute(0, 2, 3, 1).reshape(-1, 8)
 
-    # # Convert binary tensor to integer tensor using vectorized operations
-    # reshaped_binary = (reshaped_binary * (2 ** torch.arange(8))).sum(dim=1, dtype=torch.int32).reshape([output_tensor.shape[0],1,160,200])
+    # Convert binary tensor to integer tensor using vectorized operations
+    reshaped_binary = (reshaped_binary * (2 ** torch.arange(8))).sum(dim=1, dtype=torch.int32).reshape([output_tensor.shape[0],1,160,200])
     
-    return output_tensor.sum(1,keepdim=True)
+    return reshaped_binary
 
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
@@ -180,7 +180,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_vb_list = []
     loss_ce_list = []
 
- 
+    best_iou = 0
+
     for epoch in range(2000):
 
         if is_main_process: print ('#Epoch - '+str(epoch))
@@ -345,6 +346,30 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             print("total IoU: " , acc/len(val_loader.dataset))
             if is_main_process():
+
+                if acc/len(val_loader.dataset) > best_iou:
+                    if conf.distributed:
+                        model_module = model.module
+
+                    else:
+                        model_module = model
+
+                    torch.save(
+                        {
+                            "model": model_module.state_dict(),
+                            "ema": ema.state_dict(),
+                            "scheduler": scheduler.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                            "conf": conf,
+                            "prediction_head_embedding": diffusion.embedding_table.state_dict(),
+                            "prediction_head_conv": diffusion.conv_seg.state_dict(),
+                            "prediction_neighbour_embedding": diffusion.neighbour_embedding_table.state_dict(),
+                            "prediction_neighbour_conv": diffusion.neighbour_conv_seg.state_dict(),
+                        },
+                        conf.training.ckpt_path + '/best_'+acc/len(val_loader.dataset)+'.pt'
+                    )
+                    best_iou = acc/len(val_loader.dataset)
+
                 all_scaled_samples = torch.cat(all_scaled_samples, dim=0)
                 all_scaled_GT = torch.cat(all_scaled_GT, dim=0)
                 prediction = torch.cat([all_scaled_samples], -1)
