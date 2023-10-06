@@ -127,7 +127,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
 
         null_logits = self.forward(x, t, cond=cond, prob = 0)
 
-        return [null_logits + (logits - null_logits) * cond_scale, logits, null_logits]
+        return [null_logits + (logits - null_logits) * 7.5, logits, null_logits]
 
     def forward(self,
                 x,

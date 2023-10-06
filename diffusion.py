@@ -59,14 +59,14 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
         
             [cond, target_pose] = x_cond[:2]
             et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
-            et, neighbour, model_var_values = torch.split(et, 64, dim=1)
-            x0_t = (xt - (et+neighbour) * (1 - at).sqrt()) / at.sqrt()
+            et, model_var_values = torch.split(et, 64, dim=1)
+            x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
             c1 = (
                 kwargs.get("eta", 0) * ((1 - at / at_next) * (1 - at_next) / (1 - at)).sqrt()
             )
             c2 = ((1 - at_next) - c1 ** 2).sqrt()
-            xt = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * (et+neighbour)
+            xt = at_next.sqrt() * x0_t + c1 * torch.randn_like(x) + c2 * et
 
             if len(x_cond) == 4:
                 [_,_,ref,mask] = x_cond
@@ -76,7 +76,7 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
     final_xt = []
     for x in xt:
         o = x.softmax(0)[1:,:,:]
-        final_xt.append(torch.where(o>=0.5, 1, 0))
+        final_xt.append(torch.where(o>=0.7, 1, 0))
     final_xt = torch.stack(final_xt, dim=0)
     return [final_xt], x0_preds
 
@@ -240,27 +240,14 @@ class GaussianDiffusion:
 
         self.conv_seg = nn.Conv2d(64, 2, kernel_size=1).cuda()
 
-        self.neighbour_embedding_table = nn.Embedding(256, 64).cuda()
-
-        self.neighbour_conv_seg = nn.Conv2d(64, 256, kernel_size=1).cuda()
-
     def embed_GT_mask(self, mask):
         mask = self.embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)
         mask = (torch.sigmoid(mask) * 2 - 1) * 0.01
 
         return mask
     
-    def embed_neighbour_mask(self, mask):
-        mask = self.neighbour_embedding_table(mask).squeeze(1).permute(0, 3, 1, 2)
-        mask = (torch.sigmoid(mask) * 2 - 1) * 0.01
-
-        return mask
-    
     def pred_head(self, x_0):
         return self.conv_seg(x_0.float())
-    
-    def neighbour_pred_head(self, x_0):
-        return self.neighbour_conv_seg(x_0.float())
     
 
 
@@ -1009,19 +996,13 @@ class GaussianDiffusion:
         :return: a dict with the key "loss" containing a tensor of shape [N].
                  Some mean or variance settings may also have other keys.
         """
-        neighbour_mask = x_start[1]
-        x_start = x_start[0]
         GT_map = x_start
-
-        neighbour_mask = self.embed_neighbour_mask(neighbour_mask.long()).detach()
         x_start = self.embed_GT_mask(x_start.long()).detach()
         if model_kwargs is None:
             model_kwargs = {}
         if noise is None:
             noise = th.randn_like(x_start)
-            noise_neighbour = th.randn_like(neighbour_mask)
         x_t = self.q_sample(x_start, t, noise=noise)
-        neighbour_t = self.q_sample(neighbour_mask, t, noise=noise_neighbour)
         [img, target_pose] = cond_input
 
         terms = {}
@@ -1039,14 +1020,14 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x = torch.cat([x_t+neighbour_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
+            model_output = model(x = torch.cat([x_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,
             ]:
                 B, C = x_t.shape[:2]
-                assert model_output.shape == (B, C * 3, *x_t.shape[2:])
-                model_output, neighbour_mask_output ,model_var_values = th.split(model_output, C, dim=1)
+                assert model_output.shape == (B, C * 2, *x_t.shape[2:])
+                model_output, model_var_values = th.split(model_output, C, dim=1)
                 # Learn the variance using the variational bound, but don't let
                 # it affect our mean prediction.
                 frozen_out = th.cat([model_output.detach(), model_var_values], dim=1)
@@ -1073,17 +1054,16 @@ class GaussianDiffusion:
             # with shape [8, 64, 160, 200]
             assert model_output.shape == target.shape == x_start.shape
             terms["mse"] = mean_flat((target - model_output) ** 2)
-            terms["mse2"] = mean_flat((noise_neighbour - neighbour_mask_output) ** 2)
             at = compute_alpha(betas.cuda(), t.long())
-            x0_t = ((x_t+neighbour_t) - (model_output + neighbour_mask_output) * (1 - at).sqrt()) / at.sqrt()
+            x0_t = (x_t - model_output * (1 - at).sqrt()) / at.sqrt()
 
             pred = self.pred_head(x0_t.float())
             terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
 
             if "vb" in terms:
-                terms["loss"] = (terms["mse"] + terms["mse2"])*3 + terms["vb"] + terms["ce"]
+                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"]
             else:
-                terms["loss"] = (terms["mse"] + terms["mse2"])*3 + terms["ce"]
+                terms["loss"] = terms["mse"]*3 + terms["ce"]
         else:
             raise NotImplementedError(self.loss_type)
 

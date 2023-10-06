@@ -176,7 +176,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
     loss_list = []
     loss_mean_list = []
-    loss_mean2_list = []
     loss_vb_list = []
     loss_ce_list = []
 
@@ -196,7 +195,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-            mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+            mask = generate_neighbour_values(mask_GT).float()
 
             img = image
             target_img = mask_GT
@@ -205,7 +204,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             img = img.to(device)
             target_img = target_img.to(device)
             target_pose = target_pose.to(device)
-            neighbour_mask = generate_neighbour_values(mask_GT).float().to(device)
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],
@@ -213,11 +211,10 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = (target_img,neighbour_mask), t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
-            loss_mse2 = loss_dict['mse2'].mean()
             loss_vb = loss_dict['vb'].mean()
             loss_ce = loss_dict['ce'].mean()
         
@@ -231,7 +228,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             loss_list.append(loss.detach().item())
             loss_mean_list.append(loss_mse.detach().item())
-            loss_mean2_list.append(loss_mse2.detach().item())
             loss_vb_list.append(loss_vb.detach().item())
             loss_ce_list.append(loss_ce.detach().item())
 
@@ -245,13 +241,11 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 wandb.log({'loss':(sum(loss_list)/len(loss_list)), 
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
                             'loss_mse':(sum(loss_mean_list)/len(loss_mean_list)), 
-                            'loss_mse2':(sum(loss_mean2_list)/len(loss_mean2_list)), 
                             'loss_ce':(sum(loss_ce_list)/len(loss_ce_list)), 
                             'epoch':epoch,
                             'steps':i})
                 loss_list = []
                 loss_mean_list = []
-                loss_mean2_list = []
                 loss_vb_list = []
 
             if i%args.save_checkpoints_every_iters == 0 and is_main_process():
@@ -261,19 +255,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 else:
                     model_module = model
-
-                # torch.save(
-                #     {
-                #         "model": model_module.state_dict(),
-                #         "ema": ema.state_dict(),
-                #         "scheduler": scheduler.state_dict(),
-                #         "optimizer": optimizer.state_dict(),
-                #         "conf": conf,
-                #         "prediction_head_embedding": diffusion.embedding_table.state_dict(),
-                #         "prediction_head_conv": diffusion.conv_seg.state_dict(),
-                #     },
-                #     conf.training.ckpt_path + f"/model_{str(i).zfill(6)}.pt"
-                # )
 
         if is_main_process():
 
@@ -295,8 +276,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                     "conf": conf,
                     "prediction_head_embedding": diffusion.embedding_table.state_dict(),
                     "prediction_head_conv": diffusion.conv_seg.state_dict(),
-                    "prediction_neighbour_embedding": diffusion.neighbour_embedding_table.state_dict(),
-                    "prediction_neighbour_conv": diffusion.neighbour_conv_seg.state_dict(),
                 },
                 conf.training.ckpt_path + '/last.pt'
                
@@ -316,7 +295,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 image = torch.cat((image_hor,image_ver), 1)
                 mask_GT = targets['masks'].float()
 
-                mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+                mask = generate_neighbour_values(mask_GT).float()
 
                 val_img = image.cuda()
                 val_pose = mask.cuda()
@@ -332,8 +311,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         nsteps = 50
 
                         noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
-                        noise2 = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
-                        noise = noise + noise2
                         seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                         xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                         samples = xs[-1].cuda()
@@ -363,10 +340,8 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                             "conf": conf,
                             "prediction_head_embedding": diffusion.embedding_table.state_dict(),
                             "prediction_head_conv": diffusion.conv_seg.state_dict(),
-                            "prediction_neighbour_embedding": diffusion.neighbour_embedding_table.state_dict(),
-                            "prediction_neighbour_conv": diffusion.neighbour_conv_seg.state_dict(),
                         },
-                        conf.training.ckpt_path + '/best_'+acc/len(val_loader.dataset)+'.pt'
+                        conf.training.ckpt_path + '/best_'+str(acc/len(val_loader.dataset))+'.pt'
                     )
                     best_iou = acc/len(val_loader.dataset)
 
@@ -429,8 +404,6 @@ def main(settings, EXP_NAME):
         optimizer.load_state_dict(ckpt["optimizer"])
         diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
         diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
-        diffusion.neighbour_embedding_table.load_state_dict(ckpt["prediction_neighbour_embedding"])
-        diffusion.neighbour_conv_seg.load_state_dict(ckpt["prediction_neighbour_conv"])
 
         if is_main_process():  print ('model loaded successfully')
 
