@@ -178,6 +178,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
     loss_mean_list = []
     loss_vb_list = []
     loss_ce_list = []
+    loss_dice_list = []
 
     best_iou = 0
 
@@ -217,6 +218,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             loss_mse = loss_dict['mse'].mean()
             loss_vb = loss_dict['vb'].mean()
             loss_ce = loss_dict['ce'].mean()
+            loss_dice = loss_dict['dice'].mean()
         
 
             optimizer.zero_grad()
@@ -230,6 +232,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             loss_mean_list.append(loss_mse.detach().item())
             loss_vb_list.append(loss_vb.detach().item())
             loss_ce_list.append(loss_ce.detach().item())
+            loss_dice_list.append(loss_dice.detach().item())
 
             accumulate(
                 ema, model.module, 0 if i < conf.training.scheduler.warmup else 0.9999
@@ -242,11 +245,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                             'loss_vb':(sum(loss_vb_list)/len(loss_vb_list)), 
                             'loss_mse':(sum(loss_mean_list)/len(loss_mean_list)), 
                             'loss_ce':(sum(loss_ce_list)/len(loss_ce_list)), 
+                            'loss_dice':(sum(loss_dice_list)/len(loss_dice_list)), 
                             'epoch':epoch,
                             'steps':i})
                 loss_list = []
                 loss_mean_list = []
                 loss_vb_list = []
+                loss_dice_list = []
                 loss_ce_list = []
 
             if i%args.save_checkpoints_every_iters == 0 and is_main_process():

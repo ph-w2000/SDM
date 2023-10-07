@@ -1059,11 +1059,12 @@ class GaussianDiffusion:
 
             pred = self.pred_head(x0_t.float())
             terms["ce"] = torch.nn.functional.cross_entropy(pred, GT_map.squeeze().long())
+            terms["dice"] = self.diceloss(pred.softmax(1)[:,1:,:,:], GT_map.squeeze().long())
 
             if "vb" in terms:
-                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"]
+                terms["loss"] = terms["mse"]*3 + terms["vb"] + terms["ce"] + terms["dice"]
             else:
-                terms["loss"] = terms["mse"]*3 + terms["ce"]
+                terms["loss"] = terms["mse"]*3 + terms["ce"] + terms["dice"]
         else:
             raise NotImplementedError(self.loss_type)
 
