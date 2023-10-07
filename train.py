@@ -247,6 +247,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 loss_list = []
                 loss_mean_list = []
                 loss_vb_list = []
+                loss_ce_list = []
 
             if i%args.save_checkpoints_every_iters == 0 and is_main_process():
 
@@ -295,7 +296,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 image = torch.cat((image_hor,image_ver), 1)
                 mask_GT = targets['masks'].float()
 
-                mask = generate_neighbour_values(mask_GT).float()
+                mask = tgenerate_neighbour_values(mask_GT).float()
 
                 val_img = image.cuda()
                 val_pose = mask.cuda()
