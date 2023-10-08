@@ -196,7 +196,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             image_ver = imgs[1].float()
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-            mask = generate_neighbour_values(mask_GT).float()
+            mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
 
             img = image
             target_img = mask_GT
@@ -301,7 +301,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 image = torch.cat((image_hor,image_ver), 1)
                 mask_GT = targets['masks'].float()
 
-                mask = generate_neighbour_values(mask_GT).float()
+                mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
 
                 val_img = image.cuda()
                 val_pose = mask.cuda()
