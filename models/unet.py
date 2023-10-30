@@ -251,7 +251,9 @@ class BeatGANsUNetModel(nn.Module):
                             use_new_attention_order,
                         ))
                 if level and i == conf.num_res_blocks:
-                    resolution *= 2
+                    resolution = tuple(map(lambda x: int(x // 2), resolution))
+                    if resolution == (20,24):
+                        resolution = (20,25)
                     out_ch = ch
                     layers.append(
                         ResBlockConfig(
