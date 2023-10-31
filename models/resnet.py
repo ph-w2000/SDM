@@ -322,6 +322,15 @@ class ResNet(nn.Module):
 
         self.vit = ViT(256,3,8,512)
 
+        self.encoder_layer1 = nn.TransformerEncoderLayer(d_model=500, nhead=20)
+        self.encoder1 = nn.TransformerEncoder(self.encoder_layer1, num_layers=2)
+
+        self.encoder_layer2 = nn.TransformerEncoderLayer(d_model=120, nhead=8)
+        self.encoder2 = nn.TransformerEncoder(self.encoder_layer2, num_layers=2)
+
+        self.encoder_layer3 = nn.TransformerEncoderLayer(d_model=30, nhead=6)
+        self.encoder3 = nn.TransformerEncoder(self.encoder_layer3, num_layers=2)
+
 
     def initialize_params(self):
         for layer in self.modules():
@@ -374,6 +383,15 @@ class ResNet(nn.Module):
 
         x = torch.concat((x,attention),1)
         a3 = x
+
+        a1 = self.encoder1(rearrange(a1, 'b c h w -> c b (h w)'))
+        a2 = self.encoder2(rearrange(a2, 'b c h w -> c b (h w)'))
+        a3 = self.encoder3(rearrange(a3, 'b c h w -> c b (h w)'))
+
+        a1 = rearrange(a1, 'c b (h w) -> b c h w', h=20, w=25)
+        a2 = rearrange(a2, 'c b (h w) -> b c h w', h=10, w=12)
+        a3 = rearrange(a3, 'c b (h w) -> b c h w', h=5, w=6)
+
         return [a1,a2,a3]
     
 if __name__ == '__main__':
