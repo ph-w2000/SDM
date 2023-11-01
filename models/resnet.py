@@ -306,15 +306,15 @@ class ResNet(nn.Module):
         self.layer12 = self._make_layer(block, 64, layers[0], stride=1)
         self.layer22 = self._make_layer(block, 128, layers[1], stride=2)
         self.layer32 = self._make_layer(block, 256, layers[2], stride=2)
-        self.layer42 = self._make_layer(block, 512, layers[3], stride=2)
+        self.layer42 = self._make_layer(block, 256, layers[3], stride=2)
         
-        self.conv52 = nn.Conv2d(512 * block.expansion, 512-14, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
+        self.conv52 = nn.Conv2d(256 * block.expansion, 256-14, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
                                bias=False)
         
-        self.bn52 = nn.BatchNorm2d(512-14)
+        self.bn52 = nn.BatchNorm2d(256-14)
 
         self.initialize_params()
-        self.attention = SelfAttention(512-14)
+        self.attention = SelfAttention(256-14)
 
         self.cs_attention = CrossAttention(26*33)
 
@@ -322,14 +322,14 @@ class ResNet(nn.Module):
 
         self.vit = ViT(256,3,8,512)
 
-        self.encoder_layer1 = nn.TransformerEncoderLayer(d_model=500, nhead=20)
-        self.encoder1 = nn.TransformerEncoder(self.encoder_layer1, num_layers=2)
+        # self.encoder_layer1 = nn.TransformerEncoderLayer(d_model=500, nhead=20)
+        # self.encoder1 = nn.TransformerEncoder(self.encoder_layer1, num_layers=2)
 
-        self.encoder_layer2 = nn.TransformerEncoderLayer(d_model=120, nhead=8)
-        self.encoder2 = nn.TransformerEncoder(self.encoder_layer2, num_layers=2)
+        # self.encoder_layer2 = nn.TransformerEncoderLayer(d_model=120, nhead=8)
+        # self.encoder2 = nn.TransformerEncoder(self.encoder_layer2, num_layers=2)
 
-        self.encoder_layer3 = nn.TransformerEncoderLayer(d_model=30, nhead=6)
-        self.encoder3 = nn.TransformerEncoder(self.encoder_layer3, num_layers=2)
+        # self.encoder_layer3 = nn.TransformerEncoderLayer(d_model=30, nhead=6)
+        # self.encoder3 = nn.TransformerEncoder(self.encoder_layer3, num_layers=2)
 
 
     def initialize_params(self):
@@ -384,13 +384,13 @@ class ResNet(nn.Module):
         x = torch.concat((x,attention),1)
         a3 = x
 
-        a1 = self.encoder1(rearrange(a1, 'b c h w -> c b (h w)'))
-        a2 = self.encoder2(rearrange(a2, 'b c h w -> c b (h w)'))
-        a3 = self.encoder3(rearrange(a3, 'b c h w -> c b (h w)'))
+        # a1 = self.encoder1(rearrange(a1, 'b c h w -> c b (h w)'))
+        # a2 = self.encoder2(rearrange(a2, 'b c h w -> c b (h w)'))
+        # a3 = self.encoder3(rearrange(a3, 'b c h w -> c b (h w)'))
 
-        a1 = rearrange(a1, 'c b (h w) -> b c h w', h=20, w=25)
-        a2 = rearrange(a2, 'c b (h w) -> b c h w', h=10, w=12)
-        a3 = rearrange(a3, 'c b (h w) -> b c h w', h=5, w=6)
+        # a1 = rearrange(a1, 'c b (h w) -> b c h w', h=20, w=25)
+        # a2 = rearrange(a2, 'c b (h w) -> b c h w', h=10, w=12)
+        # a3 = rearrange(a3, 'c b (h w) -> b c h w', h=5, w=6)
 
         return [a1,a2,a3]
     

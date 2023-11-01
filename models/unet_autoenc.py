@@ -270,7 +270,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 except IndexError:
                     lateral = None
                     # print(i, j, lateral)
-                if h.shape == (h.shape[0], 512, 20, 24) :
+                if h.shape == (h.shape[0], 256, 20, 24) :
                     h = F.pad(h, (0, 1, 0, 0))
                 if k <= 2 and k>=0:
                     h = self.output_blocks[k](h,

@@ -45,7 +45,7 @@ def get_model_conf():
 
     return BeatGANsAutoencConfig(image_size=(160,200), 
     in_channels=64+1, 
-    model_channels=128, 
+    model_channels=64, 
     out_channels=64*2,  # also learns sigma
     num_res_blocks=2, 
     num_input_res_blocks=None, 

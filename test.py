@@ -136,8 +136,6 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 nsteps = 50
 
                 noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
-                noise2 = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
-                noise = noise + noise2
                 seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
                 xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                 samples = xs[-1].cuda()
@@ -259,6 +257,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last_compound_12.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
