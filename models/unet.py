@@ -210,6 +210,9 @@ class BeatGANsUNetModel(nn.Module):
         )
         self._feature_size += ch
 
+        self.VA_blocks = nn.ModuleList([])
+        n_v = 0
+
         self.output_blocks = nn.ModuleList([])
         for level, mult in list(enumerate(conf.channel_mult))[::-1]:
             for i in range(conf.num_res_blocks + 1):
@@ -275,6 +278,10 @@ class BeatGANsUNetModel(nn.Module):
                 self.output_blocks.append(TimestepEmbedSequential(*layers))
                 self.output_num_blocks[level] += 1
                 self._feature_size += ch
+
+                if n_v < 6:
+                    self.VA_blocks.append(VA(ch))
+                    n_v +=1 
 
         # print(input_block_chans)
         # print('inputs:', self.input_num_blocks)

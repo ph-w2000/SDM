@@ -43,7 +43,7 @@ def compute_alpha(beta, t):
     return a
 
 
-def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
+def ddim_steps(x, seq, model, b, x_cond, diffusion = None, d=None, **kwargs):
     x_cond[0] = [model.encode(x_cond[0])['cond'], model.encode(torch.zeros_like(x_cond[0]))['cond']]
     with torch.no_grad():
         n = x.size(0)
@@ -58,7 +58,7 @@ def ddim_steps(x, seq, model, b, x_cond, diffusion = None, **kwargs):
             at_next = compute_alpha(b, next_t.long())
         
             [cond, target_pose] = x_cond[:2]
-            et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2)[0]
+            et = model.forward_with_cond_scale(x = torch.cat([xt, target_pose],1), t = t, cond = cond, cond_scale = 2, d=d)[0]
             et, model_var_values = torch.split(et, 64, dim=1)
             x0_t = (xt - et * (1 - at).sqrt()) / at.sqrt()
             #x0_preds.append(x0_t.to('cpu'))
@@ -984,7 +984,7 @@ class GaussianDiffusion:
         output = th.where((t == 0), decoder_nll, kl)
         return {"output": output, "pred_xstart": out["pred_xstart"]}
 
-    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None):
+    def training_losses(self, model, x_start, cond_input, t, prob, model_kwargs=None, noise=None, betas=None, d=None):
         """
         Compute training losses for a single timestep.
         :param model: the model to evaluate loss on.
@@ -1020,7 +1020,7 @@ class GaussianDiffusion:
             if self.loss_type == LossType.RESCALED_KL:
                 terms["loss"] *= self.num_timesteps
         elif self.loss_type == LossType.MSE or self.loss_type == LossType.RESCALED_MSE:
-            model_output = model(x = torch.cat([x_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob)
+            model_output = model(x = torch.cat([x_t, target_pose],1), t = self._scale_timesteps(t), x_cond = img, prob = prob, d=d)
             if self.model_var_type in [
                 ModelVarType.LEARNED,
                 ModelVarType.LEARNED_RANGE,

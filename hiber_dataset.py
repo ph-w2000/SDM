@@ -39,65 +39,81 @@ class HIBERDataset(Dataset):
         self.classes = {i: n for i, n in enumerate(HIBER_CLASSES, 1)}
 
     def __getitem__(self, idx):
+        img_id = idx
+        if 590 - img_id % 590 == 3:
+            ids = [img_id, img_id+1, img_id+2, img_id+2]
+        elif 590 - img_id % 590 == 2:
+            ids = [img_id, img_id+1, img_id+1, img_id+1]
+        elif 590 - img_id % 590 == 1:
+            ids = [img_id, img_id, img_id, img_id]
+        else:
+            ids = [img_id, img_id+1, img_id+2, img_id+3]
+
         if self.split == "val_small":
             if idx % 6 ==0:
-                return self.get_image(0 + idx//6 * 590), self.get_target(0 + idx//6 * 590)
+                ids = [0 + idx//6 * 590, 0 + idx//6 * 590 +1, 0 + idx//6 * 590 +2, 0 + idx//6 * 590 +3]
             elif idx % 6 ==1:
-                return self.get_image(80 + idx//6 * 590), self.get_target(80 + idx//6 * 590)
+                ids = [80 + idx//6 * 590, 80 + idx//6 * 590 +1, 80 + idx//6 * 590 +2, 80 + idx//6 * 590 +3]
             elif idx % 6 ==2:
-                return self.get_image(190 + idx//6 * 590), self.get_target(190 + idx//6 * 590)
+                ids = [190 + idx//6 * 590, 190 + idx//6 * 590 +1, 190 + idx//6 * 590 +2, 190 + idx//6 * 590 +3]
             elif idx % 6 ==3:
-                return self.get_image(300 + idx//6 * 590), self.get_target(300 + idx//6 * 590)
+                ids = [300 + idx//6 * 590, 300 + idx//6 * 590 +1, 300 + idx//6 * 590 +2, 300 + idx//6 * 590 +3]
             elif idx % 6 ==4:
-                return self.get_image(410 + idx//6 * 590), self.get_target(410 + idx//6 * 590)
+                ids = [410 + idx//6 * 590, 410 + idx//6 * 590 +1, 410 + idx//6 * 590 +2, 410 + idx//6 * 590 +3]
             else:
-                return self.get_image(520 + idx//6 * 590), self.get_target(520 + idx//6 * 590)
+                ids = [520 + idx//6 * 590, 520 + idx//6 * 590 +1, 520 + idx//6 * 590 +2, 520 + idx//6 * 590 +3]
 
-        return self.get_image(idx), self.get_target(idx)
+        return self.get_image(ids), self.get_target(ids)
     
-    def get_image(self, img_id):
-        data = self.ds[img_id]
-        image = np.transpose(data[0], (2, 0, 1))
-        hor = image
+    def get_image(self, ids):
+        hors = []
+        vers = []
 
-        image = np.transpose(data[1], (2, 0, 1))
-        ver = image
+        for id in ids:
+            data = self.ds[id]
+            image = np.transpose(data[0], (2, 0, 1))
+            hor = torch.tensor(image)
 
-        return hor, ver
+            image = np.transpose(data[1], (2, 0, 1))
+            ver = torch.tensor(image)
+
+            hors.append(hor)
+            vers.append(ver)
+
+        hors = torch.stack(hors,dim=1)
+        vers = torch.stack(vers,dim=1)
+
+        return hors, vers
         
-    def get_target(self, img_id):
-        data = self.ds[img_id]
-        if data[6].shape == (0,1248,1640):
-            silhouette = np.full((1, 1248, 1640), False)
-            data = data[:6] + (silhouette,) + data[7:]
+    def get_target(self, ids):
 
-        masks = torch.tensor(data[6])
-        masks = torch.nn.functional.interpolate(masks.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
-        masks = masks.round().long()
+        img_ids = []
+        labels = []
+        masks = []
+        for id in ids:
+            data = self.ds[id]
+            if data[6].shape == (0,1248,1640):
+                silhouette = np.full((1, 1248, 1640), False)
+                data = data[:6] + (silhouette,) + data[7:]
 
-        fullMasks = torch.tensor(data[6]).float().round().long()
-        
-        hor_boxes = data[4]
-        ver_boxes = data[5]
-        hor_boxes = torch.tensor(hor_boxes, dtype=torch.float32)
-        ver_boxes = torch.tensor(ver_boxes, dtype=torch.float32)
-        
-        labels = data[1]
-        labels = torch.tensor(labels)
+            mask = torch.tensor(data[6])
+            mask = torch.nn.functional.interpolate(mask.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
+            mask = mask.round().long()
+            
+            label = data[1]
+            label = torch.tensor(label)
 
-        bone_2d = data[2].copy()
-        bone_2d[:,:,0] = bone_2d[:,:,0]/1640*200
-        bone_2d[:,:,1] = bone_2d[:,:,1]/1248*160
-        bone_2d = torch.tensor(bone_2d)
-        bone_2d = torch.clamp(bone_2d, min=0)
-        bone_2d[:,:,0] = torch.clamp(bone_2d[:,:,0], max=199)
-        bone_2d[:,:,1] = torch.clamp(bone_2d[:,:,1], max=159)
+            img_id = torch.tensor(int(data[7]))
 
-        bone_2d_m = data[2]
-        bone_2d_m = torch.tensor(bone_2d_m)
-        img_id = torch.tensor(int(data[7]))
+            masks.append(mask)
+            labels.append(label)
+            img_ids.append(img_id)
 
-        target = dict(image_id=img_id, vboxes=ver_boxes, hboxes=hor_boxes, labels=labels, masks=masks, fullMasks=fullMasks, bone_2d=bone_2d, bone_2d_m=bone_2d_m)
+        img_ids = torch.stack(img_ids,dim=0)
+        labels = torch.stack(labels,dim=0)
+        masks = torch.stack(masks,dim=1)
+
+        target = dict(image_id=img_ids, labels=labels, masks=masks)
 
         return target
     

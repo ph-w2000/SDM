@@ -11,7 +11,7 @@ from torch import nn
 
 from .nn import (avg_pool_nd, conv_nd, linear, normalization,
                  timestep_embedding, torch_checkpoint, zero_module)
-from .vit import ViT
+from .attention import Transformer3DModel
 
 class ScaleAt(Enum):
     after_norm = 'afternorm'
@@ -352,6 +352,13 @@ def apply_conditions(
     h = post_layers(h)
     return h
 
+class VA(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.transformer = Transformer3DModel(in_channels=channels)
+
+    def forward(self, x):
+        return self.transformer(x)
 
 class Upsample(nn.Module):
     """

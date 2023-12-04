@@ -19,6 +19,7 @@ import data as deepfashion_data
 from model import UNet
 import torch.nn.functional as F
 # from resnet import PredictionHead
+from einops import rearrange
 
 def generate_neighbour_values(input_tensor):
     # Extract the height and width
@@ -168,7 +169,7 @@ def calculate_iou(array1, array2):
     ious = torch.stack(ious)
     return torch.sum(ious, dim=0)
 
-def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb):
+def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, scheduler, guidance_prob, cond_scale, device, wandb, filtered_parameters):
 
     import time
 
@@ -194,9 +195,11 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             image_hor = imgs[0].float()
             image_ver = imgs[1].float()
+            b, d = image_hor.shape[0], image_hor.shape[2]
+
             image = torch.cat((image_hor,image_ver), 1)
             mask_GT = targets['masks'].float()
-            mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+            mask = torch.zeros(b * d, 1, 160, 200)
 
             img = image
             target_img = mask_GT
@@ -208,11 +211,14 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             time_t = torch.randint(
                 0,
                 conf.diffusion.beta_schedule["n_timestep"],
-                (img.shape[0],),
+                (b*d,),
                 device=device,
             )
 
-            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas)
+            target_img = rearrange(target_img, 'b c d h w -> (b d) c h w')
+            img = rearrange(img, 'b c d h w -> (b d) c h w')
+
+            loss_dict = diffusion.training_losses(model, x_start = target_img, t = time_t, cond_input = [img, target_pose], prob = 1 - guidance_prob, betas=betas, d=d)
 
             loss = loss_dict['loss'].mean()
             loss_mse = loss_dict['mse'].mean()
@@ -223,7 +229,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
             optimizer.zero_grad()
             loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 1)
+            nn.utils.clip_grad_norm_(filtered_parameters.values(), 1)
             scheduler.step()
             optimizer.step()
             loss = loss_dict['loss'].mean()
@@ -301,11 +307,14 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 image = torch.cat((image_hor,image_ver), 1)
                 mask_GT = targets['masks'].float()
 
-                mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+                mask = torch.zeros(b*d, 1, 160, 200)
 
                 val_img = image.cuda()
                 val_pose = mask.cuda()
                 mask_GT = mask_GT.cuda()
+
+                mask_GT = rearrange(mask_GT, 'b c d h w -> (b d) c h w')
+                val_img = rearrange(val_img, 'b c d h w -> (b d) c h w')
 
                 with torch.no_grad():
 
@@ -316,9 +325,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         print ('Sampling algorithm used: DDIM')
                         nsteps = 50
 
-                        noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
+                        noise = torch.randn([b*d,64,160,200]).cuda()
                         seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                        xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
+                        xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion, d=d)
                         samples = xs[-1].cuda()
 
                         scaled_samples = samples.float()
@@ -327,7 +336,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         all_scaled_GT.append(scaled_GT)
                         acc += calculate_iou( scaled_samples,scaled_GT)
 
-            print("total IoU: " , acc/len(val_loader.dataset))
+            print("total IoU: " , acc/len(val_loader.dataset)/4)
             if is_main_process():
 
                 if acc/len(val_loader.dataset) > best_iou:
@@ -391,7 +400,13 @@ def main(settings, EXP_NAME):
             find_unused_parameters=True
         )
 
-    optimizer = DiffConf.training.optimizer.make(model.parameters())
+    target_layers = ['VA_blocks',]
+    filtered_parameters = {name: param for name, param in model.named_parameters() if any(layer in name for layer in target_layers)}
+
+    for name, param in model.named_parameters():
+        param.requires_grad = any(layer in name for layer in target_layers)
+
+    optimizer = DiffConf.training.optimizer.make(filtered_parameters.values())
     scheduler = DiffConf.training.scheduler.make(optimizer)
     betas = DiffConf.diffusion.beta_schedule.make()
     diffusion = create_gaussian_diffusion(betas, predict_xstart = False)
@@ -400,21 +415,20 @@ def main(settings, EXP_NAME):
         ckpt = torch.load(DiffConf.ckpt, map_location=lambda storage, loc: storage)
 
         if DiffConf.distributed:
-            model.module.load_state_dict(ckpt["model"])
+            model.module.load_state_dict(ckpt["model"], strict=False)
 
         else:
-            model.load_state_dict(ckpt["model"])
+            model.load_state_dict(ckpt["model"], strict=False)
 
-        ema.load_state_dict(ckpt["ema"])
+        ema.load_state_dict(ckpt["ema"], strict=False)
         scheduler.load_state_dict(ckpt["scheduler"])
-        optimizer.load_state_dict(ckpt["optimizer"])
-        diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
-        diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
+        diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"], strict=False)
+        diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"], strict=False)
 
         if is_main_process():  print ('model loaded successfully')
 
     train(
-        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb
+        DiffConf, train_dataset, val_dataset, model, ema, diffusion, betas, optimizer, scheduler, args.guidance_prob, args.cond_scale, args.device, wandb, filtered_parameters
     )
 
 if __name__ == "__main__":
@@ -457,6 +471,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    # DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last_test_0.69.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

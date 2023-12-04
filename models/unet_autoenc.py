@@ -8,6 +8,7 @@ from .latentnet import *
 from .unet import *
 from .choices import *
 from .resnet import ResNet
+from einops import rearrange
 
 def prob_mask_like(shape, prob, device):
     if prob == 1:
@@ -119,13 +120,11 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
         t,
         cond,
         cond_scale,
+        d
     ):
-        logits = self.forward(x, t, cond=cond, prob = 1)
+        logits = self.forward(x, t, cond=cond, prob = 1, d=d)
 
-        if cond_scale == 1:
-            return [logits, _, _]
-
-        null_logits = self.forward(x, t, cond=cond, prob = 0)
+        null_logits = self.forward(x, t, cond=cond, prob = 0, d=d)
 
         return [null_logits + (logits - null_logits) * 7.5, logits, null_logits]
 
@@ -139,6 +138,7 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                 style=None,
                 noise=None,
                 t_cond=None,
+                d=None,
                 **kwargs):
         """
         Apply the model to an input batch.
@@ -292,6 +292,10 @@ class BeatGANsAutoencModel(BeatGANsUNetModel):
                                             emb=dec_time_emb,
                                             cond=None,
                                             lateral=lateral)
+                if k < 6:
+                    h = rearrange(h, '(b d) c h w -> b c d h w', d=d)
+                    h = self.VA_blocks[k](h)
+                    h = rearrange(h, 'b c d h w -> (b d) c h w')
                 k += 1
         pred = self.out(h)
         return pred
