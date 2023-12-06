@@ -298,6 +298,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             print ('Generating samples at epoch number ' + str(epoch))
 
             acc = 0
+            num = 0
             all_scaled_samples = []
             all_scaled_GT = []
 
@@ -334,12 +335,13 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         scaled_GT = mask_GT.float()
                         all_scaled_samples.append(scaled_samples)
                         all_scaled_GT.append(scaled_GT)
-                        acc += calculate_iou( scaled_samples,scaled_GT)
+                        acc += (calculate_iou( scaled_samples,scaled_GT)/(b*d))
+                        num += 1
 
-            print("total IoU: " , acc/len(val_loader.dataset)/4)
+            print("total IoU: " , acc/num)
             if is_main_process():
 
-                if acc/len(val_loader.dataset) > best_iou:
+                if acc/num > best_iou:
                     if conf.distributed:
                         model_module = model.module
 
@@ -356,15 +358,15 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                             "prediction_head_embedding": diffusion.embedding_table.state_dict(),
                             "prediction_head_conv": diffusion.conv_seg.state_dict(),
                         },
-                        conf.training.ckpt_path + '/best_'+str(acc/len(val_loader.dataset))+'.pt'
+                        conf.training.ckpt_path + '/best_'+str(acc/num)+'.pt'
                     )
-                    best_iou = acc/len(val_loader.dataset)
+                    best_iou = acc/num
 
                 all_scaled_samples = torch.cat(all_scaled_samples, dim=0)
                 all_scaled_GT = torch.cat(all_scaled_GT, dim=0)
                 prediction = torch.cat([all_scaled_samples], -1)
                 MaGT = torch.cat([all_scaled_GT], -1)
-                wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(acc/len(val_loader.dataset))) )})
+                wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(acc/num)) )})
                 wandb.log({'GT':wandb.Image(wandb.Image(MaGT), caption=("step "+str(i)))})
 
 

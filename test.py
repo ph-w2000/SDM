@@ -18,6 +18,9 @@ import numpy as np
 import data as deepfashion_data
 from model import UNet
 from hiber_dataset import HIBERDataset
+import matplotlib.pyplot as plt
+from einops import rearrange
+from torch.utils.data import DataLoader, Dataset, SequentialSampler
 
 def init_distributed():
 
@@ -108,25 +111,46 @@ def calculate_iou(array1, array2):
     return torch.sum(ious, dim=0)
 
 
+class IntervalSequentialSampler(SequentialSampler):
+    def __init__(self, data_source, interval=1):
+        super().__init__(data_source)
+        self.interval = interval
+
+    def __iter__(self):
+        indices = list(range(len(self.data_source)))
+        indices = indices[::self.interval]
+        return iter(indices)
+
 def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
 
     import time
 
     acc = 0
+    num = 0
 
     for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
 
         image_hor = imgs[0].float()
         image_ver = imgs[1].float()
+        b, d = image_hor.shape[0], image_hor.shape[2]
         image = torch.cat((image_hor,image_ver), 1)
         mask_GT = targets['masks'].float()
 
-        mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
+        mask = torch.zeros(b*d, 1, 160, 200)
 
         val_img = image.cuda()
         val_pose = mask.cuda()
         mask_GT = mask_GT.cuda()
 
+        # for b in mask_GT.cpu():
+        #     for x in range(4):
+        #         plt.imshow(b[:,x,:,:].squeeze())
+        #         plt.axis('off')  # Turn off axis labels
+        #         plt.show()
+
+        mask_GT = rearrange(mask_GT, 'b c d h w -> (b d) c h w')
+        val_img = rearrange(val_img, 'b c d h w -> (b d) c h w')
+        
         with torch.no_grad():
             if args.sample_algorithm == 'ddpm':
                 print ('Sampling algorithm used: DDPM')
@@ -137,23 +161,24 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
 
                 noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                 seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
-                xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
+                xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion, d=d)
                 samples = xs[-1].cuda()
 
                 scaled_samples = samples.float()
                 scaled_GT = mask_GT.float()
-                iou = calculate_iou( scaled_samples,scaled_GT)
+                iou = calculate_iou( scaled_samples,scaled_GT).cpu()/(b*d)
                 acc += iou
-                print("IoU: ", iou/image_hor.shape[0])
+                num +=1
+                print("IoU: ", iou)
                 
                 if is_main_process():
 
                     prediction = torch.cat([scaled_samples], -1)
                     MaGT = torch.cat([scaled_GT], -1)
 
-                    wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(iou/image_hor.shape[0])) )})
+                    wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(iou)) )})
                     wandb.log({'GT':wandb.Image(MaGT)})
-    print("total IoU: " , acc/len(val_loader.dataset))
+    print("total IoU: " , acc/num)
 
 
 def main(settings, EXP_NAME):
@@ -173,11 +198,12 @@ def main(settings, EXP_NAME):
     DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
-    val_dataset = HIBERDataset(args.dataset_path, "val")
+    val_dataset = HIBERDataset(args.dataset_path, "test")
+    custom_sampler = IntervalSequentialSampler(val_dataset, interval=4)
     val_dataset = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
-        sampler=torch.utils.data.SequentialSampler(val_dataset),
+        sampler=custom_sampler,
         drop_last=False,
         num_workers=getattr(8, 'num_workers', 0),
     )
@@ -257,6 +283,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion/temporal_0.713.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
