@@ -10,3 +10,4 @@ tqdm==4.62.3
 wandb==0.15.4
 tensorfn
 einops
+diffusers
