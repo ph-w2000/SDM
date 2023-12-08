@@ -424,8 +424,8 @@ def main(settings, EXP_NAME):
 
         ema.load_state_dict(ckpt["ema"], strict=False)
         scheduler.load_state_dict(ckpt["scheduler"])
-        diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"], strict=False)
-        diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"], strict=False)
+        diffusion.embedding_table.load_state_dict(ckpt["prediction_head_embedding"])
+        diffusion.conv_seg.load_state_dict(ckpt["prediction_head_conv"])
 
         if is_main_process():  print ('model loaded successfully')
 
@@ -473,6 +473,7 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last_test_0.69.pt"
+    # load the checkpoint of processing single frame
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion-3090server/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
