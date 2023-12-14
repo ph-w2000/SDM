@@ -33,6 +33,8 @@ class HIBERDataset(Dataset):
 
         self.require_full_masks = False
 
+        self.sequence_length = 4
+
         if split == "val_small":
             self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode="val", channel_first=self.channel_first)
         else:
@@ -51,21 +53,21 @@ class HIBERDataset(Dataset):
     def __getitem__(self, idx):
         img_id = idx
 
-        ids = self.generate_number_list(img_id, 12)
+        ids = self.generate_number_list(img_id, self.sequence_length)
 
         if self.split == "val_small":
             if idx % 6 ==0:
-                ids = self.generate_number_list(0 + idx//590 * 590, 12)
+                ids = self.generate_number_list(0 + idx//590 * 590, self.sequence_length)
             elif idx % 6 ==1:
-                ids = self.generate_number_list(80 + idx//590 * 590, 12)
+                ids = self.generate_number_list(80 + idx//590 * 590, self.sequence_length)
             elif idx % 6 ==2:
-                ids = self.generate_number_list(190 + idx//590 * 590, 12)
+                ids = self.generate_number_list(190 + idx//590 * 590, self.sequence_length)
             elif idx % 6 ==3:
-                ids = self.generate_number_list(300 + idx//590 * 590, 12)
+                ids = self.generate_number_list(300 + idx//590 * 590, self.sequence_length)
             elif idx % 6 ==4:
-                ids = self.generate_number_list(410 + idx//590 * 590, 12)
+                ids = self.generate_number_list(410 + idx//590 * 590, self.sequence_length)
             else:
-                ids = self.generate_number_list(520 + idx//590 * 590, 12)
+                ids = self.generate_number_list(520 + idx//590 * 590, self.sequence_length)
 
         return self.get_image(ids), self.get_target(ids)
     
