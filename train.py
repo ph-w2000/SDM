@@ -317,6 +317,9 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                 mask_GT = rearrange(mask_GT, 'b c d h w -> (b d) c h w')
                 val_img = rearrange(val_img, 'b c d h w -> (b d) c h w')
 
+                if ind == 13:
+                    break
+
                 with torch.no_grad():
 
                     if args.sample_algorithm == 'ddpm':
@@ -324,7 +327,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
                     elif args.sample_algorithm == 'ddim':
                         print ('Sampling algorithm used: DDIM')
-                        nsteps = 50
+                        nsteps = 5
 
                         noise = torch.randn([b*d,64,160,200]).cuda()
                         seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
@@ -434,6 +437,7 @@ def main(settings, EXP_NAME):
     )
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
 
     init_distributed()
 
@@ -473,7 +477,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    # load the checkpoint of processing single frame
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion-3090server/last.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion-a6000/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

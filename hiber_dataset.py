@@ -38,30 +38,32 @@ class HIBERDataset(Dataset):
 
         self.classes = {i: n for i, n in enumerate(HIBER_CLASSES, 1)}
 
+    def generate_number_list(self, n, t):
+        if n % 590 <= 590 - t:
+            return list(range(n, n + t))
+        else:
+            result_list = list(range(n, (n // 590) * 590 + 590))
+            result_list = result_list + [result_list[-1]] * max(0, t - len(result_list))
+            return result_list
+
     def __getitem__(self, idx):
         img_id = idx
-        if 590 - img_id % 590 == 3:
-            ids = [img_id, img_id+1, img_id+2, img_id+2]
-        elif 590 - img_id % 590 == 2:
-            ids = [img_id, img_id+1, img_id+1, img_id+1]
-        elif 590 - img_id % 590 == 1:
-            ids = [img_id, img_id, img_id, img_id]
-        else:
-            ids = [img_id, img_id+1, img_id+2, img_id+3]
+
+        ids = self.generate_number_list(img_id, 12)
 
         if self.split == "val_small":
             if idx % 6 ==0:
-                ids = [0 + idx//6 * 590, 0 + idx//6 * 590 +1, 0 + idx//6 * 590 +2, 0 + idx//6 * 590 +3]
+                ids = self.generate_number_list(0 + idx//6 * 590, 12)
             elif idx % 6 ==1:
-                ids = [80 + idx//6 * 590, 80 + idx//6 * 590 +1, 80 + idx//6 * 590 +2, 80 + idx//6 * 590 +3]
+                ids = self.generate_number_list(80 + idx//6 * 590, 12)
             elif idx % 6 ==2:
-                ids = [190 + idx//6 * 590, 190 + idx//6 * 590 +1, 190 + idx//6 * 590 +2, 190 + idx//6 * 590 +3]
+                ids = self.generate_number_list(190 + idx//6 * 590, 12)
             elif idx % 6 ==3:
-                ids = [300 + idx//6 * 590, 300 + idx//6 * 590 +1, 300 + idx//6 * 590 +2, 300 + idx//6 * 590 +3]
+                ids = self.generate_number_list(300 + idx//6 * 590, 12)
             elif idx % 6 ==4:
-                ids = [410 + idx//6 * 590, 410 + idx//6 * 590 +1, 410 + idx//6 * 590 +2, 410 + idx//6 * 590 +3]
+                ids = self.generate_number_list(410 + idx//6 * 590, 12)
             else:
-                ids = [520 + idx//6 * 590, 520 + idx//6 * 590 +1, 520 + idx//6 * 590 +2, 520 + idx//6 * 590 +3]
+                ids = self.generate_number_list(520 + idx//6 * 590, 12)
 
         return self.get_image(ids), self.get_target(ids)
     
