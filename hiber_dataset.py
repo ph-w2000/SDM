@@ -27,9 +27,11 @@ class HIBERDataset(Dataset):
     
     def __init__(self, data_dir, split):
         self.data_dir = data_dir
-        self.categories = ["WALK"]
+        self.categories = ["MULTI"]
         self.split = split
         self.channel_first = False
+
+        self.require_full_masks = False
 
         if split == "val_small":
             self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode="val", channel_first=self.channel_first)
@@ -53,17 +55,17 @@ class HIBERDataset(Dataset):
 
         if self.split == "val_small":
             if idx % 6 ==0:
-                ids = self.generate_number_list(0 + idx//6 * 590, 12)
+                ids = self.generate_number_list(0 + idx//590 * 590, 12)
             elif idx % 6 ==1:
-                ids = self.generate_number_list(80 + idx//6 * 590, 12)
+                ids = self.generate_number_list(80 + idx//590 * 590, 12)
             elif idx % 6 ==2:
-                ids = self.generate_number_list(190 + idx//6 * 590, 12)
+                ids = self.generate_number_list(190 + idx//590 * 590, 12)
             elif idx % 6 ==3:
-                ids = self.generate_number_list(300 + idx//6 * 590, 12)
+                ids = self.generate_number_list(300 + idx//590 * 590, 12)
             elif idx % 6 ==4:
-                ids = self.generate_number_list(410 + idx//6 * 590, 12)
+                ids = self.generate_number_list(410 + idx//590 * 590, 12)
             else:
-                ids = self.generate_number_list(520 + idx//6 * 590, 12)
+                ids = self.generate_number_list(520 + idx//590 * 590, 12)
 
         return self.get_image(ids), self.get_target(ids)
     
@@ -73,14 +75,20 @@ class HIBERDataset(Dataset):
 
         for id in ids:
             data = self.ds[id]
-            image = np.transpose(data[0], (2, 0, 1))
-            hor = torch.tensor(image)
+            if data[0].shape == (160,200,2):
+                image = np.transpose(data[0], (2, 0, 1))
+                hor = image
+            else:
+                hor = data[0]
 
-            image = np.transpose(data[1], (2, 0, 1))
-            ver = torch.tensor(image)
+            if data[1].shape == (160,200,2):
+                image = np.transpose(data[1], (2, 0, 1))
+                ver = image
+            else:
+                ver = data[0]
 
-            hors.append(hor)
-            vers.append(ver)
+            hors.append(torch.tensor(hor))
+            vers.append(torch.tensor(ver))
 
         hors = torch.stack(hors,dim=1)
         vers = torch.stack(vers,dim=1)
@@ -92,6 +100,7 @@ class HIBERDataset(Dataset):
         img_ids = []
         labels = []
         masks = []
+        full_masks = []
         for id in ids:
             data = self.ds[id]
             if data[6].shape == (0,1248,1640):
@@ -101,6 +110,14 @@ class HIBERDataset(Dataset):
             mask = torch.tensor(data[6])
             mask = torch.nn.functional.interpolate(mask.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
             mask = mask.round().long()
+
+            if self.require_full_masks:
+                full_mask = torch.tensor(data[6])
+
+            if mask.shape[0] > 1:
+                mask = torch.unsqueeze(torch.any(mask.bool(), dim=0), dim=0)
+                if self.require_full_masks:
+                    full_mask = torch.unsqueeze(torch.any(torch.tensor(data[6]).bool(), dim=0), dim=0)
             
             label = data[1]
             label = torch.tensor(label)
@@ -111,11 +128,17 @@ class HIBERDataset(Dataset):
             labels.append(label)
             img_ids.append(img_id)
 
+            if self.require_full_masks:
+                full_masks.append(full_mask)
+
         img_ids = torch.stack(img_ids,dim=0)
         labels = torch.stack(labels,dim=0)
         masks = torch.stack(masks,dim=1)
 
-        target = dict(image_id=img_ids, labels=labels, masks=masks)
+        if self.require_full_masks:
+            full_masks = torch.stack(full_masks,dim=1)
+
+        target = dict(image_id=img_ids, labels=labels, masks=masks, full_masks=full_masks)
 
         return target
     

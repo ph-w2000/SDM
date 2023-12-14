@@ -157,7 +157,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
             elif args.sample_algorithm == 'ddim' and is_main_process():
                 print ('Sampling algorithm used: DDIM')
-                nsteps = 50
+                nsteps = 5
 
                 noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                 seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
@@ -253,7 +253,7 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, default='pidm_deepfashion')
     parser.add_argument('--DiffConfigPath', type=str, default='./config/diffusion.conf')
     parser.add_argument('--DataConfigPath', type=str, default='./config/data.yaml')
-    parser.add_argument('--dataset_path', type=str, default='../../dataset/HIBER/')
+    parser.add_argument('--dataset_path', type=str, default='../../../../media/penghui02/T7/')
     parser.add_argument('--save_path', type=str, default='checkpoints')
     parser.add_argument('--cond_scale', type=int, default=2)
     parser.add_argument('--guidance_prob', type=int, default=0.1)
@@ -283,6 +283,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/temporal_0.713.pt"
+    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
