@@ -27,7 +27,7 @@ class HIBERDataset(Dataset):
     
     def __init__(self, data_dir, split):
         self.data_dir = data_dir
-        self.categories = ["WALK"]
+        self.categories = ["MULTI"]
         self.split = split
         self.channel_first = False
 
@@ -41,27 +41,33 @@ class HIBERDataset(Dataset):
     def __getitem__(self, idx):
         if self.split == "val_small":
             if idx % 6 ==0:
-                return self.get_image(0 + idx//6 * 590), self.get_target(0 + idx//6 * 590)
+                return self.get_image(0 + idx//590 * 590), self.get_target(0 + idx//590 * 590)
             elif idx % 6 ==1:
-                return self.get_image(80 + idx//6 * 590), self.get_target(80 + idx//6 * 590)
+                return self.get_image(80 + idx//590 * 590), self.get_target(80 + idx//590 * 590)
             elif idx % 6 ==2:
-                return self.get_image(190 + idx//6 * 590), self.get_target(190 + idx//6 * 590)
+                return self.get_image(190 + idx//590 * 590), self.get_target(190 + idx//590 * 590)
             elif idx % 6 ==3:
-                return self.get_image(300 + idx//6 * 590), self.get_target(300 + idx//6 * 590)
+                return self.get_image(300 + idx//590 * 590), self.get_target(300 + idx//590 * 590)
             elif idx % 6 ==4:
-                return self.get_image(410 + idx//6 * 590), self.get_target(410 + idx//6 * 590)
+                return self.get_image(410 + idx//590 * 590), self.get_target(410 + idx//590 * 590)
             else:
-                return self.get_image(520 + idx//6 * 590), self.get_target(520 + idx//6 * 590)
+                return self.get_image(520 + idx//590 * 590), self.get_target(520 + idx//590 * 590)
 
         return self.get_image(idx), self.get_target(idx)
     
     def get_image(self, img_id):
         data = self.ds[img_id]
-        image = np.transpose(data[0], (2, 0, 1))
-        hor = image
+        if data[0].shape == (160,200,2):
+            image = np.transpose(data[0], (2, 0, 1))
+            hor = image
+        else:
+            hor = data[0]
 
-        image = np.transpose(data[1], (2, 0, 1))
-        ver = image
+        if data[1].shape == (160,200,2):
+            image = np.transpose(data[1], (2, 0, 1))
+            ver = image
+        else:
+            ver = data[0]
 
         return hor, ver
         
@@ -71,33 +77,23 @@ class HIBERDataset(Dataset):
             silhouette = np.full((1, 1248, 1640), False)
             data = data[:6] + (silhouette,) + data[7:]
 
-        masks = torch.tensor(data[6])
-        masks = torch.nn.functional.interpolate(masks.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
-        masks = masks.round().long()
+        mask = torch.tensor(data[6])
+        mask = torch.nn.functional.interpolate(mask.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
+        mask = mask.round().long()
 
-        fullMasks = torch.tensor(data[6]).float().round().long()
+        fullMask = torch.tensor(data[6]).float().round().long()
+
+        if mask.shape[0] > 1:
+            mask = torch.unsqueeze(torch.any(mask.bool(), dim=0), dim=0)
+            full_mask = torch.unsqueeze(torch.any(torch.tensor(data[6]).bool(), dim=0), dim=0)
+
         
-        hor_boxes = data[4]
-        ver_boxes = data[5]
-        hor_boxes = torch.tensor(hor_boxes, dtype=torch.float32)
-        ver_boxes = torch.tensor(ver_boxes, dtype=torch.float32)
-        
-        labels = data[1]
-        labels = torch.tensor(labels)
+        label = data[1]
+        label = torch.tensor(label)
 
-        bone_2d = data[2].copy()
-        bone_2d[:,:,0] = bone_2d[:,:,0]/1640*200
-        bone_2d[:,:,1] = bone_2d[:,:,1]/1248*160
-        bone_2d = torch.tensor(bone_2d)
-        bone_2d = torch.clamp(bone_2d, min=0)
-        bone_2d[:,:,0] = torch.clamp(bone_2d[:,:,0], max=199)
-        bone_2d[:,:,1] = torch.clamp(bone_2d[:,:,1], max=159)
-
-        bone_2d_m = data[2]
-        bone_2d_m = torch.tensor(bone_2d_m)
         img_id = torch.tensor(int(data[7]))
 
-        target = dict(image_id=img_id, vboxes=ver_boxes, hboxes=hor_boxes, labels=labels, masks=masks, fullMasks=fullMasks, bone_2d=bone_2d, bone_2d_m=bone_2d_m)
+        target = dict(image_id=img_id, labels=label, masks=mask, fullMasks=fullMask)
 
         return target
     
