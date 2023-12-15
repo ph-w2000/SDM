@@ -85,7 +85,7 @@ class HIBERDataset(Dataset):
 
         if mask.shape[0] > 1:
             mask = torch.unsqueeze(torch.any(mask.bool(), dim=0), dim=0)
-            full_mask = torch.unsqueeze(torch.any(torch.tensor(data[6]).bool(), dim=0), dim=0)
+            fullMask = torch.unsqueeze(torch.any(torch.tensor(data[6]).bool(), dim=0), dim=0)
 
         
         label = data[1]

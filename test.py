@@ -120,12 +120,14 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
         image_ver = imgs[1].float()
         image = torch.cat((image_hor,image_ver), 1)
         mask_GT = targets['masks'].float()
+        mask_GT_full = targets['fullMasks'].float()
 
         mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
 
         val_img = image.cuda()
         val_pose = mask.cuda()
         mask_GT = mask_GT.cuda()
+        mask_GT_full = mask_GT_full.cuda()
 
         with torch.no_grad():
             if args.sample_algorithm == 'ddpm':
@@ -140,8 +142,10 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion)
                 samples = xs[-1].cuda()
 
-                scaled_samples = samples.float()
-                scaled_GT = mask_GT.float()
+                # scaled_samples = samples.float()
+                import torch.nn.functional as F
+                scaled_samples = F.interpolate(samples.float(), size=(1248,1640), mode='bilinear', align_corners=False)
+                scaled_GT = mask_GT_full.float()
                 iou = calculate_iou( scaled_samples,scaled_GT)
                 acc += iou
                 print("IoU: ", iou/image_hor.shape[0])
@@ -173,7 +177,7 @@ def main(settings, EXP_NAME):
     DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
-    val_dataset = HIBERDataset(args.dataset_path, "val")
+    val_dataset = HIBERDataset(args.dataset_path, "test")
     val_dataset = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
@@ -227,7 +231,7 @@ if __name__ == "__main__":
     parser.add_argument('--exp_name', type=str, default='pidm_deepfashion')
     parser.add_argument('--DiffConfigPath', type=str, default='./config/diffusion.conf')
     parser.add_argument('--DataConfigPath', type=str, default='./config/data.yaml')
-    parser.add_argument('--dataset_path', type=str, default='../../dataset/HIBER/')
+    parser.add_argument('--dataset_path', type=str, default='../../../../media/penghui02/T7/')
     parser.add_argument('--save_path', type=str, default='checkpoints')
     parser.add_argument('--cond_scale', type=int, default=2)
     parser.add_argument('--guidance_prob', type=int, default=0.1)
@@ -257,6 +261,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
+    # DiffConf.ckpt = "checkpoints/pidm_deepfashion/best_tensor(0.7170, device='cuda:0').pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
