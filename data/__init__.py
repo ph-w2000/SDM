@@ -33,13 +33,13 @@ def get_option_setter(dataset_name):
     return dataset_class.modify_commandline_options
 
 
-def create_dataloader(opt, distributed, labels_required, is_inference):
+def create_dataloader(opt, distributed, labels_required, is_inference, sequence):
     # dataset = find_dataset_using_name(opt.type)
     # instance = dataset(opt, is_inference, labels_required)
     if is_inference:
-        dataset = HIBERDataset(opt.path, "val_small")
+        dataset = HIBERDataset(opt.path, "val_small", sequence)
     else:
-        dataset = HIBERDataset(opt.path, "train")
+        dataset = HIBERDataset(opt.path, "train", sequence)
     phase = 'val' if is_inference else 'training'
     batch_size = opt.train.batch_size
     print("%s dataset [%s] of size %d was created" %
@@ -69,10 +69,10 @@ def get_dataloader(opt, distributed, is_inference):
     return dataset
 
 
-def get_train_val_dataloader(opt, labels_required=False, distributed = False):
+def get_train_val_dataloader(opt, labels_required=False, distributed = False, sequence=None):
 
-    val_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=True,)
-    train_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=False)
+    val_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=True, sequence=sequence)
+    train_dataset = create_dataloader(opt, distributed, labels_required = labels_required, is_inference=False, sequence=sequence)
         
     return val_dataset, train_dataset
 

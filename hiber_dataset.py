@@ -25,13 +25,13 @@ class HIBERDataset(Dataset):
 
         return len(self.ds)
     
-    def __init__(self, data_dir, split):
+    def __init__(self, data_dir, split, sequence_length):
         self.data_dir = data_dir
-        self.categories = ["WALK"]
+        self.categories = ["MULTI"]
         self.split = split
         self.channel_first = False
 
-        self.sequence_length = 4
+        self.sequence_length = sequence_length
 
         if split == "val_small":
             self.ds = hiber.HIBERDataset(root=self.data_dir, categories=self.categories, mode="val", channel_first=self.channel_first)

@@ -200,8 +200,8 @@ def main(settings, EXP_NAME):
     DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
-    val_dataset = HIBERDataset(args.dataset_path, "test")
-    custom_sampler = IntervalSequentialSampler(val_dataset, interval=4)
+    val_dataset = HIBERDataset(args.dataset_path, "test", args.sequence)
+    custom_sampler = IntervalSequentialSampler(val_dataset, interval=args.sequence)
     val_dataset = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=args.batch_size,
@@ -269,6 +269,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_machine', type=int, default=1)
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER)
+    parser.add_argument('--sequence', type=int, default=4)
 
     args = parser.parse_args()
 
@@ -285,6 +286,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "WALK/temporal_0.713.pt"
+    DiffConf.ckpt = "seg_papercode/sil-diffusion/MULTI/multi_stage1.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

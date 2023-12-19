@@ -21,48 +21,6 @@ import torch.nn.functional as F
 # from resnet import PredictionHead
 from einops import rearrange
 
-def generate_neighbour_values(input_tensor):
-    # Extract the height and width
-    B, _, H, W = input_tensor.shape
-
-    # Initialize the output tensor with zeros
-    output_tensor = torch.zeros((B, 8, H+2, W+2), dtype=torch.float32)
-
-    # Extract the values from the original tensor
-    input_values = F.pad(input_tensor, (1, 1, 1, 1))
-    input_values = input_values.squeeze(1)  # Remove the singleton channel dimension
-
-    # Create masks based on the conditions
-    left_top_mask = torch.roll(input_values, shifts=(1,1), dims=(1, 2))
-    top_mask = torch.roll(input_values, shifts=1, dims=1)
-    right_top_mask = torch.roll(input_values, shifts=(1,-1), dims=(1, 2))
-    left_mask = torch.roll(input_values, shifts=1, dims=2)
-    right_mask = torch.roll(input_values, shifts=-1, dims=2)
-    bottom_mask = torch.roll(input_values, shifts=-1, dims=1)
-    left_bottom_mask = torch.roll(input_values, shifts=(-1, 1), dims=(1, 2))
-    right_bottom_mask = torch.roll(input_values, shifts=(-1, -1), dims=(1, 2))
-
-    # Fill the output tensor based on the masks
-    output_tensor[:, 0, :, :] = left_top_mask
-    output_tensor[:, 1, :, :] = top_mask
-    output_tensor[:, 2, :, :] = right_top_mask
-    output_tensor[:, 3, :, :] = left_mask 
-    output_tensor[:, 4, :, :] = right_mask
-    output_tensor[:, 5, :, :] = left_bottom_mask
-    output_tensor[:, 6, :, :] = bottom_mask
-    output_tensor[:, 7, :, :] = right_bottom_mask
-
-    # Convert the output tensor to binary values (0 or 1)
-    output_tensor = (output_tensor > 0).float()
-    output_tensor = output_tensor[:,:,1:-1,1:-1]
-
-    reshaped_binary = output_tensor.permute(0, 2, 3, 1).reshape(-1, 8)
-
-    # Convert binary tensor to integer tensor using vectorized operations
-    reshaped_binary = (reshaped_binary * (2 ** torch.arange(8))).sum(dim=1, dtype=torch.int32).reshape([output_tensor.shape[0],1,160,200])
-    
-    return reshaped_binary
-
 def replace_zeros_and_ones_with_random_values(tensor):
     # Get the shape of the input tensor
     shape = tensor.size()
@@ -305,6 +263,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
             for ind, (imgs, targets) in enumerate(tqdm(val_loader)):
                 image_hor = imgs[0].float()
                 image_ver = imgs[1].float()
+                b,d = image_hor.shape[0], image_hor.shape[2]
                 image = torch.cat((image_hor,image_ver), 1)
                 mask_GT = targets['masks'].float()
 
@@ -316,9 +275,6 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
 
                 mask_GT = rearrange(mask_GT, 'b c d h w -> (b d) c h w')
                 val_img = rearrange(val_img, 'b c d h w -> (b d) c h w')
-
-                if ind == 13:
-                    break
 
                 with torch.no_grad():
 
@@ -390,7 +346,7 @@ def main(settings, EXP_NAME):
     DataConf.data.train.batch_size = args.batch_size  #src -> tgt , tgt -> src
     
 
-    val_dataset, train_dataset = deepfashion_data.get_train_val_dataloader(DataConf.data, labels_required = True, distributed = True)
+    val_dataset, train_dataset = deepfashion_data.get_train_val_dataloader(DataConf.data, labels_required = True, distributed = True, sequence=args.sequence)
     
 
     model = get_model_conf().make_model()
@@ -437,7 +393,7 @@ def main(settings, EXP_NAME):
     )
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"]="1"
+    os.environ["CUDA_VISIBLE_DEVICES"]="0"
 
     init_distributed()
 
@@ -461,6 +417,7 @@ if __name__ == "__main__":
     parser.add_argument('--n_machine', type=int, default=1)
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument("opts", default=None, nargs=argparse.REMAINDER)
+    parser.add_argument('--sequence', type=int, default=4)
 
     args = parser.parse_args()
 
@@ -477,6 +434,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion-a6000/last.pt"
+    DiffConf.ckpt = "MULTI/multi_stage1.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
