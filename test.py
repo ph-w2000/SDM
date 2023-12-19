@@ -135,21 +135,21 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
         b, d = image_hor.shape[0], image_hor.shape[2]
         image = torch.cat((image_hor,image_ver), 1)
         mask_GT = targets['masks'].float()
+        mask_GT_full = targets['full_masks'].float()
 
         mask = torch.zeros(b*d, 1, 160, 200)
 
         val_img = image.cuda()
         val_pose = mask.cuda()
         mask_GT = mask_GT.cuda()
+        mask_GT_full = mask_GT_full.cuda()
 
-        # for b in mask_GT.cpu():
-        #     for x in range(4):
-        #         plt.imshow(b[:,x,:,:].squeeze())
-        #         plt.axis('off')  # Turn off axis labels
-        #         plt.show()
+        ids = targets['image_id']
 
         mask_GT = rearrange(mask_GT, 'b c d h w -> (b d) c h w')
         val_img = rearrange(val_img, 'b c d h w -> (b d) c h w')
+        mask_GT_full = rearrange(mask_GT_full, 'b c d h w -> (b d) c h w')
+        ids = rearrange(ids, 'b n -> (b n)')
         
         with torch.no_grad():
             if args.sample_algorithm == 'ddpm':
@@ -164,8 +164,10 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 xs, x0_preds = ddim_steps(noise, seq, ema, betas.cuda(), [val_img, val_pose], diffusion=diffusion, d=d)
                 samples = xs[-1].cuda()
 
-                scaled_samples = samples.float()
-                scaled_GT = mask_GT.float()
+                import torch.nn.functional as F
+                scaled_samples = torch.round(F.interpolate(samples.float(), size=(1248,1640), mode='bilinear', align_corners=False))
+                # scaled_samples = samples.float()
+                scaled_GT = mask_GT_full.float()
                 iou = calculate_iou( scaled_samples,scaled_GT).cpu()/(b*d)
                 acc += iou
                 num +=1
@@ -177,7 +179,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                     MaGT = torch.cat([scaled_GT], -1)
 
                     wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(iou)) )})
-                    wandb.log({'GT':wandb.Image(MaGT)})
+                    wandb.log({'GT':wandb.Image(wandb.Image(MaGT),caption=(str(ids)) )})
     print("total IoU: " , acc/num)
 
 
@@ -283,6 +285,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "checkpoints/pidm_deepfashion/last.pt"
+    DiffConf.ckpt = "WALK/temporal_0.713.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

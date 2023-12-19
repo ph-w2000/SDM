@@ -27,11 +27,9 @@ class HIBERDataset(Dataset):
     
     def __init__(self, data_dir, split):
         self.data_dir = data_dir
-        self.categories = ["MULTI"]
+        self.categories = ["WALK"]
         self.split = split
         self.channel_first = False
-
-        self.require_full_masks = False
 
         self.sequence_length = 4
 
@@ -113,13 +111,11 @@ class HIBERDataset(Dataset):
             mask = torch.nn.functional.interpolate(mask.float().unsqueeze(0), size=(160, 200), mode='bilinear', align_corners=False).squeeze(0)
             mask = mask.round().long()
 
-            if self.require_full_masks:
-                full_mask = torch.tensor(data[6])
+            full_mask = torch.tensor(data[6])
 
             if mask.shape[0] > 1:
                 mask = torch.unsqueeze(torch.any(mask.bool(), dim=0), dim=0)
-                if self.require_full_masks:
-                    full_mask = torch.unsqueeze(torch.any(torch.tensor(data[6]).bool(), dim=0), dim=0)
+                full_mask = torch.unsqueeze(torch.any(full_mask.bool(), dim=0), dim=0)
             
             label = data[1]
             label = torch.tensor(label)
@@ -129,16 +125,12 @@ class HIBERDataset(Dataset):
             masks.append(mask)
             labels.append(label)
             img_ids.append(img_id)
-
-            if self.require_full_masks:
-                full_masks.append(full_mask)
+            full_masks.append(full_mask)
 
         img_ids = torch.stack(img_ids,dim=0)
         labels = torch.stack(labels,dim=0)
         masks = torch.stack(masks,dim=1)
-
-        if self.require_full_masks:
-            full_masks = torch.stack(full_masks,dim=1)
+        full_masks = torch.stack(full_masks,dim=1)
 
         target = dict(image_id=img_ids, labels=labels, masks=masks, full_masks=full_masks)
 
