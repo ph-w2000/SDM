@@ -121,6 +121,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
         image = torch.cat((image_hor,image_ver), 1)
         mask_GT = targets['masks'].float()
         mask_GT_full = targets['fullMasks'].float()
+        ids = targets['image_id']
 
         mask = torch.zeros(image_hor.shape[0], 1, 160, 200)
 
@@ -156,7 +157,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                     MaGT = torch.cat([scaled_GT], -1)
 
                     wandb.log({'Prediction':wandb.Image(wandb.Image(prediction),caption=("IoU "+str(iou/image_hor.shape[0])) )})
-                    wandb.log({'GT':wandb.Image(MaGT)})
+                    wandb.log({'GT':wandb.Image(wandb.Image(MaGT),caption=(str(ids)))})
     print("total IoU: " , acc/len(val_loader.dataset))
 
 
@@ -261,6 +262,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    # DiffConf.ckpt = "checkpoints/pidm_deepfashion/best_tensor(0.7170, device='cuda:0').pt"
+    DiffConf.ckpt = "MULTI/multi_temporal_4_0.702.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)
