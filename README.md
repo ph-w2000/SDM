@@ -45,6 +45,10 @@ python -m torch.distributed.launch --nproc_per_node=1 --master_port 48949 test.p
 - You can change the training hyperparameters in test.py file, such as dataset path, batch_size etc.
 - To switch "WALK" dataset to "MULTI", you can change it in hiber_dataset.py file.
 
+## Stage2
+
+please switch to branch "fine-tune" get run stage2 code.
+
 ## Citation
 
 If you use the results and code for your research, please cite our paper:
