@@ -27,7 +27,7 @@ class HIBERDataset(Dataset):
     
     def __init__(self, data_dir, split, sequence_length):
         self.data_dir = data_dir
-        self.categories = ["MULTI"]
+        self.categories = ["WALK"]
         self.split = split
         self.channel_first = False
 

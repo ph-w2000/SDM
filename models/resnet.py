@@ -8,7 +8,6 @@ import numpy as np
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum
-from .network import RSN
         
 ## Adapted from https://github.com/joaomonteirof/e2e_antispoofing
 
@@ -311,25 +310,12 @@ class ResNet(nn.Module):
         self.conv52 = nn.Conv2d(256 * block.expansion, 256-14, kernel_size=(num_nodes, 6), stride=(1, 1), padding=(0, 1),
                                bias=False)
         
-        self.bn52 = nn.BatchNorm2d(256-14)
+        self.bn52 = nn.BatchNorm2d(256)
 
         self.initialize_params()
-        self.attention = SelfAttention(256-14)
-
-        self.cs_attention = CrossAttention(26*33)
-
-        self.boneNet = RSN("", False)
+        self.attention = SelfAttention(256)
 
         self.vit = ViT(256,3,8,512)
-
-        # self.encoder_layer1 = nn.TransformerEncoderLayer(d_model=500, nhead=20)
-        # self.encoder1 = nn.TransformerEncoder(self.encoder_layer1, num_layers=2)
-
-        # self.encoder_layer2 = nn.TransformerEncoderLayer(d_model=120, nhead=8)
-        # self.encoder2 = nn.TransformerEncoder(self.encoder_layer2, num_layers=2)
-
-        # self.encoder_layer3 = nn.TransformerEncoderLayer(d_model=30, nhead=6)
-        # self.encoder3 = nn.TransformerEncoder(self.encoder_layer3, num_layers=2)
 
 
     def initialize_params(self):
@@ -378,19 +364,7 @@ class ResNet(nn.Module):
         
         stats = self.attention(x.permute(0, 2, 3, 1).contiguous())
         x = stats.permute(0, 3, 1, 2).contiguous()
-
-        attention = self.boneNet(torch.cat((x1,x2),dim=1))
-
-        x = torch.concat((x,attention),1)
         a3 = x
-
-        # a1 = self.encoder1(rearrange(a1, 'b c h w -> c b (h w)'))
-        # a2 = self.encoder2(rearrange(a2, 'b c h w -> c b (h w)'))
-        # a3 = self.encoder3(rearrange(a3, 'b c h w -> c b (h w)'))
-
-        # a1 = rearrange(a1, 'c b (h w) -> b c h w', h=20, w=25)
-        # a2 = rearrange(a2, 'c b (h w) -> b c h w', h=10, w=12)
-        # a3 = rearrange(a3, 'c b (h w) -> b c h w', h=5, w=6)
 
         return [a1,a2,a3]
     

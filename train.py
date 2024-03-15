@@ -21,23 +21,6 @@ import torch.nn.functional as F
 # from resnet import PredictionHead
 from einops import rearrange
 
-def replace_zeros_and_ones_with_random_values(tensor):
-    # Get the shape of the input tensor
-    shape = tensor.size()
-
-    # Generate random values for 0s from the range [-1, 0]
-    random_zeros = -torch.rand(shape)  # Generates random values in the range [-1, 0)
-
-    # Generate random values for 1s from the range (0, 1]
-    random_ones = torch.rand(shape)  # Generates random values in the range [0, 1)
-    epsilon=1e-7
-    random_ones = random_ones.masked_fill(random_ones == 0, epsilon)
-
-    # Use torch.where to replace 0s with random_zeros and 1s with random_ones
-    result = torch.where(tensor == 0, random_zeros, random_ones)
-
-    return result
-
 def init_distributed():
 
     # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
@@ -283,7 +266,7 @@ def train(conf, loader, val_loader, model, ema, diffusion, betas, optimizer, sch
                         samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
                     elif args.sample_algorithm == 'ddim':
                         print ('Sampling algorithm used: DDIM')
-                        nsteps = 5
+                        nsteps = 50
 
                         noise = torch.randn([b*d,64,160,200]).cuda()
                         seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
@@ -334,8 +317,8 @@ def main(settings, EXP_NAME):
     [args, DiffConf, DataConf] = settings
 
     if is_main_process(): 
-        # wandb.init(mode="disabled")
-        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        wandb.init(mode="disabled")
+        # wandb.init(project="stage2", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
@@ -400,7 +383,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='help')
-    parser.add_argument('--exp_name', type=str, default='pidm_deepfashion')
+    parser.add_argument('--exp_name', type=str, default='SDM-stage2')
     parser.add_argument('--DiffConfigPath', type=str, default='./config/diffusion.conf')
     parser.add_argument('--DataConfigPath', type=str, default='./config/data.yaml')
     parser.add_argument('--dataset_path', type=str, default='../../dataset/HIBER/')
@@ -434,6 +417,6 @@ if __name__ == "__main__":
         if not os.path.isdir(args.save_path): os.mkdir(args.save_path)
         if not os.path.isdir(DiffConf.training.ckpt_path): os.mkdir(DiffConf.training.ckpt_path)
 
-    DiffConf.ckpt = "MULTI/multi_stage1.pt"
+    DiffConf.ckpt = "WALK/walk_stage1.pt"
 
     main(settings = [args, DiffConf, DataConf], EXP_NAME = args.exp_name)

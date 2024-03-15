@@ -157,7 +157,7 @@ def test(conf, val_loader, ema, diffusion, betas, cond_scale, wandb):
                 samples = diffusion.p_sample_loop(ema, x_cond = [val_img, val_pose], progress = True, cond_scale = cond_scale)
             elif args.sample_algorithm == 'ddim' and is_main_process():
                 print ('Sampling algorithm used: DDIM')
-                nsteps = 5
+                nsteps = 50
 
                 noise = torch.randn([mask_GT.shape[0],64,160,200]).cuda()
                 seq = range(0, conf.diffusion.beta_schedule["n_timestep"], conf.diffusion.beta_schedule["n_timestep"]//nsteps)
@@ -189,7 +189,7 @@ def main(settings, EXP_NAME):
 
     if is_main_process(): 
         # wandb.init(mode="disabled")
-        wandb.init(project="person-synthesis", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
+        wandb.init(project="stage2", name = EXP_NAME,  settings = wandb.Settings(code_dir="."))
 
     if DiffConf.ckpt is not None: 
         DiffConf.training.scheduler.warmup = 0
@@ -252,10 +252,10 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='help')
-    parser.add_argument('--exp_name', type=str, default='pidm_deepfashion')
+    parser.add_argument('--exp_name', type=str, default='SDM-stage2')
     parser.add_argument('--DiffConfigPath', type=str, default='./config/diffusion.conf')
     parser.add_argument('--DataConfigPath', type=str, default='./config/data.yaml')
-    parser.add_argument('--dataset_path', type=str, default='../../../../media/penghui02/T7/')
+    parser.add_argument('--dataset_path', type=str, default='../../dataset/HIBER/')
     parser.add_argument('--save_path', type=str, default='checkpoints')
     parser.add_argument('--cond_scale', type=int, default=2)
     parser.add_argument('--guidance_prob', type=int, default=0.1)
