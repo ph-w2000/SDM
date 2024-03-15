@@ -8,7 +8,6 @@ import numpy as np
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
 from torch import einsum
-from .network import RSN
         
 ## Adapted from https://github.com/joaomonteirof/e2e_antispoofing
 
