@@ -50,8 +50,16 @@ python -m torch.distributed.launch --nproc_per_node=1 --master_port 48949 test.p
 If you use the results and code for your research, please cite our paper:
 
 ```bibtex
-P. Wen, K. Hu, D. Yua, Z. Ning, C. Li and Z. Wang, "Radio Frequency Signal based Human Silhouette Segmentation: A Sequential Diffusion Approach," 2024 IEEE International Conference on Multimedia and Expo (ICME), Niagara Falls, ON, Canada, 2024, pp. 1-6, doi: 10.1109/ICME57554.2024.10688347.
-keywords: {Wireless communication;Radio frequency;Wireless sensor networks;Motion segmentation;Dynamics;RF signals;Diffusion models;Wireless sensing;semantic segmentation;diffusion model;radio frequency},
+@INPROCEEDINGS{10688347,
+  author={Wen, Penghui and Hu, Kun and Yua, Dong and Ning, Zhiyuan and Li, Changyang and Wang, Zhiyong},
+  booktitle={2024 IEEE International Conference on Multimedia and Expo (ICME)}, 
+  title={Radio Frequency Signal based Human Silhouette Segmentation: A Sequential Diffusion Approach}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={1-6},
+  keywords={Wireless communication;Radio frequency;Wireless sensor networks;Motion segmentation;Dynamics;RF signals;Diffusion models;Wireless sensing;semantic segmentation;diffusion model;radio frequency},
+  doi={10.1109/ICME57554.2024.10688347}}
 
 ```
 
