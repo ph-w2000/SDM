@@ -53,7 +53,17 @@ please switch to branch "fine-tune" get run stage2 code.
 
 If you use the results and code for your research, please cite our paper:
 
-```
+```bibtex
+@INPROCEEDINGS{10688347,
+  author={Wen, Penghui and Hu, Kun and Yua, Dong and Ning, Zhiyuan and Li, Changyang and Wang, Zhiyong},
+  booktitle={2024 IEEE International Conference on Multimedia and Expo (ICME)}, 
+  title={Radio Frequency Signal based Human Silhouette Segmentation: A Sequential Diffusion Approach}, 
+  year={2024},
+  volume={},
+  number={},
+  pages={1-6},
+  keywords={Wireless communication;Radio frequency;Wireless sensor networks;Motion segmentation;Dynamics;RF signals;Diffusion models;Wireless sensing;semantic segmentation;diffusion model;radio frequency},
+  doi={10.1109/ICME57554.2024.10688347}}
 
 ```
 
